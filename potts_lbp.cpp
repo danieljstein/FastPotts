@@ -132,16 +132,16 @@ static inline float logsumexp_float(const float* x, int K) {
 //'
 //' @export
 // [[Rcpp::export]]
-List potts_lbp(
+List potts_lbp_cpp(
     const IntegerVector& adj_ptr,
     const IntegerVector& adj_idx,
     const IntegerVector& rev_idx,
     const NumericVector& edge_weights,     // log of pairwise potentials
     const NumericMatrix& node_potential,   // log of unary potentials
     const int max_iter = 50,
-    const float damping = 0.5,
-    const float tol = 1e-4,
-    const bool synchronous = false
+    const float damping = 1.0,
+    const float tol = 1e-2,
+    const bool synchronous = true
 ) {
     const int N = node_potential.nrow();   // number of nodes
     const int K = node_potential.ncol();   // number of labels
