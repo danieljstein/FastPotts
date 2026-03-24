@@ -40,8 +40,7 @@ static inline float logsumexp_float(const float* x, int K) {
 //' Loopy belief propagation for a Potts model on a sparse directed graph
 //'
 //' Runs sum-product loopy belief propagation (LBP) for a Potts model with
-//' node-specific unary log-potentials and edge-specific attractive pairwise
-//' log-potentials.
+//' node-specific unary log-potentials and edge-specific pairwise Potts weights.
 //'
 //' The graph is supplied in CSR-like directed adjacency form. Each undirected
 //' edge should appear twice in `adj_idx`: once as `u -> v` and once as
@@ -69,17 +68,19 @@ static inline float logsumexp_float(const float* x, int K) {
 //'   for each directed edge. Values are expected to be 0-based node indices.
 //' @param rev_idx Integer vector of length `E` such that `rev_idx[e]` is the
 //'   directed-edge index of the reverse of edge `e`.
-//' @param edge_weights Numeric vector of length `E` containing log pairwise
+//' @param edge_weights Numeric vector of length `E` containing log same-label
 //'   Potts weights for each directed edge.
 //' @param node_potential Numeric matrix of dimension `N x K` containing log
 //'   unary potentials.
 //' @param max_iter Maximum number of LBP sweeps.
 //' @param damping Damping parameter in `(0, 1]`. Values below 1 blend each new
 //'   message with the previous message to improve stability on loopy graphs.
+//'   Default is `1.0`, corresponding to no damping.
 //' @param tol Convergence tolerance. Iteration stops early when the maximum
-//'   absolute message change in a sweep is below `tol`.
-//' @param synchronous Logical; if `TRUE`, uses synchronous updates with a second
-//'   message buffer. If `FALSE` (default), uses in-place asynchronous updates.
+//'   absolute message change in a sweep is below `tol`. Default is `1e-2`.
+//' @param synchronous Logical; if `TRUE` (default), uses synchronous updates
+//'   with a second message buffer. If `FALSE`, uses in-place asynchronous
+//'   updates.
 //'
 //' @return A list with components:
 //' \describe{
@@ -113,21 +114,30 @@ static inline float logsumexp_float(const float* x, int K) {
 //' \dontrun{
 //' # Suppose graph contains directed edges for both directions of each
 //' # undirected edge, stored in CSR form.
-//' fit <- potts_lbp(
+//' fit <- potts_lbp_cpp(
 //'   adj_ptr = adj_ptr,
 //'   adj_idx = adj_idx,
 //'   rev_idx = rev_idx,
 //'   edge_weights = edge_weights,
-//'   node_potential = node_potential,
-//'   max_iter = 50,
-//'   damping = 0.5,
-//'   tol = 1e-4,
-//'   synchronous = FALSE
+//'   node_potential = node_potential
 //' )
 //'
 //' fit$marginals
 //' fit$iterations
 //' fit$max_delta
+//'
+//' # Example with non-default controls
+//' fit2 <- potts_lbp_cpp(
+//'   adj_ptr = adj_ptr,
+//'   adj_idx = adj_idx,
+//'   rev_idx = rev_idx,
+//'   edge_weights = edge_weights,
+//'   node_potential = node_potential,
+//'   max_iter = 100,
+//'   damping = 0.5,
+//'   tol = 1e-4,
+//'   synchronous = FALSE
+//' )
 //' }
 //'
 //' @export
@@ -136,8 +146,8 @@ List potts_lbp_cpp(
     const IntegerVector& adj_ptr,
     const IntegerVector& adj_idx,
     const IntegerVector& rev_idx,
-    const NumericVector& edge_weights,     // log of pairwise potentials
-    const NumericMatrix& node_potential,   // log of unary potentials
+    const NumericVector& edge_weights,     // log same-label Potts weights
+    const NumericMatrix& node_potential,   // log unary potentials
     const int max_iter = 50,
     const float damping = 1.0,
     const float tol = 1e-2,
