@@ -97,15 +97,15 @@ static inline float logsumexp_float(const float* x, int K) {
 //'
 //' @export
 // [[Rcpp::export]]
-List potts_lbp_cpp_parallel(
+List potts_lbp_parallel_cpp(
     const IntegerVector& adj_ptr,
     const IntegerVector& adj_idx,
     const IntegerVector& rev_idx,
     const NumericVector& edge_weights,     // log same-label Potts weights
     const NumericMatrix& node_potential,   // log unary potentials
     const int max_iter = 50,
-    const float damping = 1.0f,
-    const float tol = 1e-2f,
+    const float damping = 1.0,
+    const float tol = 1e-2,
     Nullable<int> n_threads = R_NilValue
 ) {
     const int N = node_potential.nrow();   // number of nodes
