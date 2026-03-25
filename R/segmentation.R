@@ -33,6 +33,7 @@
 #' @param show_progress Logical; if `TRUE`, prints progress messages for major
 #'   pipeline steps (default: `TRUE`).
 #' @param tol Numeric; convergence tolerance for loopy belief propagation.
+#' @param num_cores Integer; number of CPU cores to use for parallel inference (default: 6).
 #' @param ... Additional arguments passed to `potts_lbp_parallel_cpp()`.
 #'
 #' @return A list containing:
@@ -68,8 +69,10 @@ run_crf = function(
     same_label_ratio = 5,
     show_progress = TRUE,
     tol = 0.1,
+    num_cores = 6,
     ...
 ) {
+
     # Filter transcripts by quality threshold
     if (qv %in% colnames(transcripts_df)) {
         transcripts_df = transcripts_df %>% filter(!!sym(qv) >= qv_threshold)
@@ -146,6 +149,7 @@ run_crf = function(
         graph$edge_weights,
         node_potentials,
         tol = tol,
+        n_threads = min(num_cores, parallel::detectCores()),
         ...
     )
 

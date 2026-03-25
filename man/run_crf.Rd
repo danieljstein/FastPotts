@@ -19,6 +19,7 @@ run_crf(
   same_label_ratio = 5,
   show_progress = TRUE,
   tol = 0.1,
+  num_cores = 6,
   ...
 )
 }
@@ -56,6 +57,8 @@ in the pairwise potential (default: 5).}
 pipeline steps (default: \code{TRUE}).}
 
 \item{tol}{Numeric; convergence tolerance for loopy belief propagation.}
+
+\item{num_cores}{Integer; number of CPU cores to use for parallel inference (default: 6).}
 
 \item{...}{Additional arguments passed to \code{potts_lbp_parallel_cpp()}.}
 }
