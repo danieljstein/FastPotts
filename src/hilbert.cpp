@@ -147,8 +147,14 @@ SEXP hilbert_index_scaled_cpp(NumericMatrix coords, int bits, bool return_scaled
     if (n < 1) {
         stop("coords must have at least one row.");
     }
-    if (bits < 1 || bits > 21) {
-        stop("bits must be between 1 and 21 for this integer-scaled wrapper.");
+    if (bits < 1 || bits > 31) {
+        stop("bits must be between 1 and 31.");
+    }
+    if (dims * bits > 64) {
+        stop("dims * bits must be <= 64 so the Hilbert index fits in uint64_t.");
+    }
+    if (dims * bits > 53) {
+        warning("Hilbert indices may not be exactly representable as R doubles because dims * bits > 53.");
     }
 
     IntegerMatrix scaled(n, dims);
