@@ -106,7 +106,8 @@ List potts_lbp_parallel_cpp(
     const int max_iter = 50,
     const float damping = 1.0,
     const float tol = 1e-2,
-    Nullable<int> n_threads = R_NilValue
+    Nullable<int> n_threads = R_NilValue,
+    const bool verbose = false
 ) {
     const int N = node_potential.nrow();   // number of nodes
     const int K = node_potential.ncol();   // number of labels
@@ -152,9 +153,11 @@ List potts_lbp_parallel_cpp(
     int iters = 0;
     float max_delta = 0.0f;
     double sum_delta = 0.0;
+    double mean_delta = 0.0;
 
     for (int iter = 0; iter < max_iter; ++iter) {
         max_delta = 0.0f;
+        sum_delta = 0.0;
 
 #ifdef _OPENMP
 #pragma omp parallel
@@ -250,6 +253,12 @@ List potts_lbp_parallel_cpp(
 
         msg.swap(msg_new);
 
+        if (verbose) {
+            mean_delta = sum_delta / ((double)E * (double)K);
+            Rprintf("LBP: Iteration %d, max_delta = %.6g, mean_delta = %.6g\n",
+                    iter + 1, max_delta, mean_delta);
+        }
+
         iters = iter + 1;
         if (max_delta < tol) break;
     }
@@ -264,10 +273,12 @@ List potts_lbp_parallel_cpp(
         }
     }
 
+    mean_delta = sum_delta / ((double)E * (double)K);
+
     return List::create(
         _["marginals"] = marginals,
         _["iterations"] = iters,
         _["max_delta"] = (double)max_delta,
-        _["mean_delta"] = sum_delta / ((double)E * (double)K)
+        _["mean_delta"] = mean_delta
     );
 }
