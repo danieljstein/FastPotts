@@ -12,10 +12,12 @@ run_crf(
   z = "z_location",
   gene = "feature_name",
   qv = "qv",
+  is_gene = "is_gene",
   qv_threshold = 20,
   n_neighbors = 10,
   dist_threshold = 2,
   same_label_ratio = 5,
+  show_progress = TRUE,
   ...
 )
 }
@@ -36,6 +38,10 @@ or likelihoods for each gene within a cell type. Columns should sum to 1.}
 
 \item{qv}{Character; column name for quality values (default: "qv").}
 
+\item{is_gene}{Character; column name indicating whether a transcript should
+be treated as a gene (\code{TRUE} rows retained; default: "is_gene"). If the
+column is absent, no gene-only filtering is applied.}
+
 \item{qv_threshold}{Numeric; minimum quality value to retain transcripts (default: 20).}
 
 \item{n_neighbors}{Integer; number of nearest neighbors to connect (default: 10).}
@@ -44,6 +50,9 @@ or likelihoods for each gene within a cell type. Columns should sum to 1.}
 
 \item{same_label_ratio}{Numeric; log-probability ratio for same vs. different labels
 in the pairwise potential (default: 5).}
+
+\item{show_progress}{Logical; if \code{TRUE}, prints progress messages for major
+pipeline steps (default: \code{TRUE}).}
 
 \item{...}{Additional arguments passed to \code{potts_lbp_parallel_cpp()}.}
 }
@@ -60,7 +69,8 @@ conditional random field (CRF) with loopy belief propagation inference.
 \details{
 This function performs spatial cell type assignment by:
 \enumerate{
-\item Filtering transcripts by quality threshold
+\item Optionally filtering transcripts by quality threshold
+\item Optionally filtering to rows marked as genes
 \item Computing Hilbert-curve ordering for spatial coherence
 \item Building a k-nearest neighbor graph with spatial distance constraints
 \item Running loopy belief propagation on the Potts model to infer cell types

@@ -29,6 +29,8 @@
 #' @importFrom dplyr mutate
 #' @importFrom dplyr row_number
 #' @importFrom magrittr %>%
+#' @importFrom Rcpp evalCpp
+#' @importFrom Rcpp sourceCpp
 #' @importFrom rlang .data
 #' @importFrom rlang sym
 #' @useDynLib FastPotts, .registration = TRUE

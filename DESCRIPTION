@@ -16,4 +16,5 @@ Imports:
     magrittr,
     Matrix,
     RANN,
+    Rcpp,
     rlang
