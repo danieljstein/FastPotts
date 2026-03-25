@@ -36,6 +36,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// openmp_enabled_cpp
+bool openmp_enabled_cpp();
+RcppExport SEXP _FastPotts_openmp_enabled_cpp() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(openmp_enabled_cpp());
+    return rcpp_result_gen;
+END_RCPP
+}
+// omp_max_threads_cpp
+int omp_max_threads_cpp();
+RcppExport SEXP _FastPotts_omp_max_threads_cpp() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(omp_max_threads_cpp());
+    return rcpp_result_gen;
+END_RCPP
+}
 // potts_lbp_cpp
 List potts_lbp_cpp(const IntegerVector& adj_ptr, const IntegerVector& adj_idx, const IntegerVector& rev_idx, const NumericVector& edge_weights, const NumericMatrix& node_potential, const int max_iter, const float damping, const float tol, const bool synchronous);
 RcppExport SEXP _FastPotts_potts_lbp_cpp(SEXP adj_ptrSEXP, SEXP adj_idxSEXP, SEXP rev_idxSEXP, SEXP edge_weightsSEXP, SEXP node_potentialSEXP, SEXP max_iterSEXP, SEXP dampingSEXP, SEXP tolSEXP, SEXP synchronousSEXP) {
@@ -79,6 +99,8 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_build_potts_lbp_graph", (DL_FUNC) &_FastPotts_build_potts_lbp_graph, 3},
     {"_FastPotts_hilbert_index_scaled_cpp", (DL_FUNC) &_FastPotts_hilbert_index_scaled_cpp, 3},
+    {"_FastPotts_openmp_enabled_cpp", (DL_FUNC) &_FastPotts_openmp_enabled_cpp, 0},
+    {"_FastPotts_omp_max_threads_cpp", (DL_FUNC) &_FastPotts_omp_max_threads_cpp, 0},
     {"_FastPotts_potts_lbp_cpp", (DL_FUNC) &_FastPotts_potts_lbp_cpp, 9},
     {"_FastPotts_potts_lbp_parallel_cpp", (DL_FUNC) &_FastPotts_potts_lbp_parallel_cpp, 10},
     {NULL, NULL, 0}

@@ -81,6 +81,14 @@ hilbert_index_scaled_cpp <- function(coords, bits, return_scaled = FALSE) {
     .Call(`_FastPotts_hilbert_index_scaled_cpp`, coords, bits, return_scaled)
 }
 
+openmp_enabled_cpp <- function() {
+    .Call(`_FastPotts_openmp_enabled_cpp`)
+}
+
+omp_max_threads_cpp <- function() {
+    .Call(`_FastPotts_omp_max_threads_cpp`)
+}
+
 #' Loopy belief propagation for a Potts model on a sparse directed graph
 #'
 #' Runs sum-product loopy belief propagation (LBP) for a Potts model with
