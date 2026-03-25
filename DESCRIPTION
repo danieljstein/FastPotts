@@ -11,3 +11,9 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 LinkingTo: 
     Rcpp
+Imports: 
+    dplyr,
+    magrittr,
+    Matrix,
+    RANN,
+    rlang

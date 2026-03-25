@@ -9,6 +9,19 @@ using namespace Rcpp;
 // ------------------------------------------------------------
 // nD Hilbert index from integer coordinates on [0, 2^bits - 1]
 // dims must be 2 or 3 in this wrapper
+// HILBERT CURVE INDEXING
+// This implements the conversion from d-dimensional Cartesian coordinates
+// to a linear Hilbert index. The Hilbert curve is a continuous space-filling
+// curve that maps d-dimensional points to a 1D line in a way that preserves
+// spatial locality: nearby points in d-space have nearby indices on the line.
+//
+// This is useful for spatial coherence in cell segmentation because it creates
+// a natural ordering of points that respects spatial proximity, which can improve
+// the performance of iterative belief propagation algorithms.
+//
+// The algorithm decomposes based on bits, using XOR-based transformations to
+// iteratively compute the Hilbert index. Input coordinates are assumed to be
+// in the range [0, 2^bits - 1] as 32-bit integers.
 // ------------------------------------------------------------
 static inline uint64_t hilbert_index_nd(std::vector<uint32_t> x, int dims, int bits) {
     uint32_t M = 1u << (bits - 1);
@@ -52,6 +65,17 @@ static inline uint64_t hilbert_index_nd(std::vector<uint32_t> x, int dims, int b
 
 // ------------------------------------------------------------
 // Scale raw coordinates to integer grid with shared aspect ratio
+// COORDINATE SCALING
+// This function maps floating-point coordinates to a uniform integer grid [0, 2^bits - 1].
+// Key design choice: uses a GLOBAL aspect ratio to ensure anisotropy is preserved.
+// This means if one dimension spans a larger range than others, that directionality
+// is maintained in the scaled coordinates, which is important for spatial coherence.
+//
+// The scaling algorithm:
+// 1. Find the minimum coordinate in each dimension
+// 2. Find the maximum extent in each dimension (shifted by minimum)
+// 3. Use the global maximum extent across all dimensions to scale uniformly
+// 4. This preserves the relative aspect ratio of the point cloud
 // ------------------------------------------------------------
 static inline void scale_coords_global(
     const NumericMatrix& coords,

@@ -28,6 +28,14 @@ using namespace Rcpp;
  * Returns
  * -------
  * A float containing log(sum(exp(x))).
+@@ *
+@@ * PARALLEL VERSION NOTES:
+@@ * This file implements multi-threaded belief propagation using OpenMP.
+@@ * The main parallelization target is the outer loop over source nodes (u),
+@@ * since each node's outgoing edges can be processed independently during
+@@ * a single sweep. Message updates are accumulated into a separate buffer
+@@ * to ensure synchronous semantics: all message updates in iteration t use
+@@ * messages from iteration t-1.
   */
 static inline float logsumexp_float(const float* x, int K) {
     float mx = x[0];
