@@ -151,6 +151,7 @@ List potts_lbp_parallel_cpp(
 
     int iters = 0;
     float max_delta = 0.0f;
+    double sum_delta = 0.0;
 
     for (int iter = 0; iter < max_iter; ++iter) {
         max_delta = 0.0f;
@@ -162,6 +163,7 @@ List potts_lbp_parallel_cpp(
             std::vector<float> tmp_h(K);
             std::vector<float> tmp_msg(K);
             float thread_max_delta = 0.0f;
+            double thread_sum_delta = 0.0;
 
 #ifdef _OPENMP
 #pragma omp for schedule(static)
@@ -214,6 +216,7 @@ List potts_lbp_parallel_cpp(
 
                         const float d = std::fabs(newv - oldv);
                         if (d > thread_max_delta) thread_max_delta = d;
+                        thread_sum_delta += d;
                     }
                 }
             }
@@ -223,6 +226,7 @@ List potts_lbp_parallel_cpp(
 #endif
             {
                 if (thread_max_delta > max_delta) max_delta = thread_max_delta;
+                sum_delta += thread_sum_delta;
             }
         }
 
@@ -263,6 +267,7 @@ List potts_lbp_parallel_cpp(
     return List::create(
         _["marginals"] = marginals,
         _["iterations"] = iters,
-        _["max_delta"] = (double)max_delta
+        _["max_delta"] = (double)max_delta,
+        _["mean_delta"] = sum_delta / ((double)E * (double)K)
     );
 }
