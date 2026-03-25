@@ -41,6 +41,8 @@ sweep. Default is \code{1e-2}.}
 
 \item{n_threads}{Number of OpenMP threads to use. If \code{NULL}, uses the
 current OpenMP default.}
+
+\item{verbose}{If \code{TRUE}, prints the maximum and mean message change at each iteration.}
 }
 \value{
 A list with components:
@@ -55,5 +57,26 @@ Synchronous sum-product loopy belief propagation (LBP) for a Potts model on
 a sparse directed graph stored in CSR-like form.
 }
 \details{
+This version uses OpenMP to parallelize the message-update sweep over source
+nodes. The rebuild of the cached incoming fields is performed serially.
 
+Let
+\deqn{
+H_i(k) = \log \phi_i(k) + \sum_{\ell \in N(i)} \log m_{\ell \to i}(k).
+}
+For the directed edge \code{u -> v}, the cavity field is
+\deqn{
+h_{u \to v}(k) = H_u(k) - \log m_{v \to u}(k).
+}
+With the Potts parameterization above, the message update simplifies to
+\deqn{
+m_{u \to v}(k) \propto S_{u \to v} +
+  (\exp(w_{uv}) - 1)\exp(h_{u \to v}(k)),
+}
+where
+\deqn{
+S_{u \to v} = \sum_a \exp(h_{u \to v}(a)).
+}
+This reduces each per-edge update from \code{O(K^2)} for a general pairwise model
+to \code{O(K)} for the Potts model.
 }

@@ -212,6 +212,7 @@ potts_lbp_cpp <- function(adj_ptr, adj_idx, rev_idx, edge_weights, node_potentia
 #'   sweep. Default is `1e-2`.
 #' @param n_threads Number of OpenMP threads to use. If `NULL`, uses the
 #'   current OpenMP default.
+#' @param verbose If `TRUE`, prints the maximum and mean message change at each iteration.
 #'
 #' @return A list with components:
 #' \describe{
@@ -240,7 +241,6 @@ potts_lbp_cpp <- function(adj_ptr, adj_idx, rev_idx, edge_weights, node_potentia
 #' }
 #' This reduces each per-edge update from `O(K^2)` for a general pairwise model
 #' to `O(K)` for the Potts model.
-#' }
 #'
 #' @export
 potts_lbp_parallel_cpp <- function(adj_ptr, adj_idx, rev_idx, edge_weights, node_potential, max_iter = 50L, damping = 1.0, tol = 1e-2, n_threads = NULL, verbose = FALSE) {

@@ -65,6 +65,7 @@ static inline float logsumexp_float(const float* x, int K) {
 //'   sweep. Default is `1e-2`.
 //' @param n_threads Number of OpenMP threads to use. If `NULL`, uses the
 //'   current OpenMP default.
+//' @param verbose If `TRUE`, prints the maximum and mean message change at each iteration.
 //'
 //' @return A list with components:
 //' \describe{
@@ -93,7 +94,6 @@ static inline float logsumexp_float(const float* x, int K) {
 //' }
 //' This reduces each per-edge update from `O(K^2)` for a general pairwise model
 //' to `O(K)` for the Potts model.
-//' }
 //'
 //' @export
 // [[Rcpp::export]]
