@@ -1,3 +1,6 @@
+// [[Rcpp::depends(Rcpp)]]
+// [[Rcpp::plugins(openmp)]]
+
 #include <Rcpp.h>
 
 #ifdef _OPENMP
