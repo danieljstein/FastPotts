@@ -32,6 +32,7 @@
 #'   in the pairwise potential (default: 5).
 #' @param show_progress Logical; if `TRUE`, prints progress messages for major
 #'   pipeline steps (default: `TRUE`).
+#' @param tol Numeric; convergence tolerance for loopy belief propagation.
 #' @param ... Additional arguments passed to `potts_lbp_parallel_cpp()`.
 #'
 #' @return A list containing:
@@ -66,6 +67,7 @@ run_crf = function(
     dist_threshold = 2,
     same_label_ratio = 5,
     show_progress = TRUE,
+    tol = 0.1,
     ...
 ) {
     # Filter transcripts by quality threshold
@@ -136,6 +138,7 @@ run_crf = function(
         graph$rev_idx,
         graph$edge_weights,
         node_potentials,
+        tol = tol,
         ...
     )
 

@@ -8,6 +8,8 @@
 #'   where `hilbert_index` is the Hilbert index computed from the scaled coordinates,
 #'   and `coords_scaled` is the input coordinates scaled to the unit cube according to the specified level.
 #'   If `FALSE`, returns just the Hilbert index.
+#' 
+#' @export
 hilbert_index <- function(coords, level = NULL, return_scaled = FALSE) {
     coords <- as.matrix(coords)
     d <- ncol(coords)

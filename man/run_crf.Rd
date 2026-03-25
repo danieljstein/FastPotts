@@ -18,6 +18,7 @@ run_crf(
   dist_threshold = 2,
   same_label_ratio = 5,
   show_progress = TRUE,
+  tol = 0.1,
   ...
 )
 }
@@ -53,6 +54,8 @@ in the pairwise potential (default: 5).}
 
 \item{show_progress}{Logical; if \code{TRUE}, prints progress messages for major
 pipeline steps (default: \code{TRUE}).}
+
+\item{tol}{Numeric; convergence tolerance for loopy belief propagation.}
 
 \item{...}{Additional arguments passed to \code{potts_lbp_parallel_cpp()}.}
 }
