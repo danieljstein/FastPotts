@@ -84,6 +84,13 @@ run_crf = function(
         warning(paste0("Column '", is_gene, "' not found in transcripts_df. No gene filtering will be applied."))
     }
 
+    # Filter to only genes that are in the cell signatures matrix
+    idx = which(transcripts_df[[gene]] %in% rownames(cell_signatures))
+    if (length(idx) < nrow(transcripts_df)) {
+        warning(paste0("Only ", length(idx), " out of ", nrow(transcripts_df), " transcripts have genes found in cell_signatures. Filtering to these transcripts."))
+    }
+    transcripts_df = transcripts_df[idx, ]
+
     # Compute Hilbert indices for spatial coherence ordering
     if (show_progress) {
         message("Computing Hilbert indices for spatial ordering...")
@@ -115,8 +122,8 @@ run_crf = function(
 
     # Build sparse adjacency matrix with edge weights representing label agreement
     adj = Matrix::sparseMatrix(
-        i = from,
-        j = to,
+        i = c(from, to),
+        j = c(to, from),
         x = 1,
         dims = c(nrow(transcripts_df), nrow(transcripts_df))
     )
