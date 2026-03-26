@@ -75,16 +75,23 @@ profile_run_crf <- function(
 
     run_stage = function(stage_name, expr, info = NULL) {
         gc(verbose = FALSE)
+        expr_sub = substitute(expr)
+        eval_env = parent.frame()
+        value = NULL
+        evaluate_stage = function() {
+            value <<- eval(expr_sub, envir = eval_env)
+            value
+        }
 
         if (use_peakRAM) {
-            peak = peakRAM::peakRAM(value <- eval.parent(substitute(expr)))
+            peak = peakRAM::peakRAM(evaluate_stage())
             total_alloc_mb = peak[["Total_RAM_Used_MiB"]][1]
             peak_alloc_mb = peak[["Peak_RAM_Used_MiB"]][1]
             alloc_source = "peakRAM"
         } else {
             tmp = tempfile("profile_run_crf_", fileext = ".out")
             utils::Rprofmem(tmp)
-            value = eval.parent(substitute(expr))
+            value = evaluate_stage()
             utils::Rprofmem(NULL)
             mem_lines = readLines(tmp, warn = FALSE)
             unlink(tmp)
