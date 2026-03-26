@@ -1,6 +1,7 @@
 // [[Rcpp::depends(Rcpp)]]
 #include <Rcpp.h>
 #include <algorithm>
+#include <cstdint>
 #include <unordered_map>
 #include <utility>
 using namespace Rcpp;
