@@ -123,17 +123,14 @@ run_crf = function(
     from = from[idx]
     to = to[idx]
 
-    # Build sparse adjacency matrix with edge weights representing label agreement
-    adj = Matrix::sparseMatrix(
-        i = c(from, to),
-        j = c(to, from),
-        x = 1,
-        dims = c(nrow(transcripts_df), nrow(transcripts_df))
+    # Build CSR-like graph format directly from the symmetric edge list.
+    graph = build_potts_lbp_graph_from_edges(
+        from = from,
+        to = to,
+        weights = log(same_label_ratio),
+        n_nodes = nrow(transcripts_df),
+        symmetric = TRUE
     )
-    adj@x = rep(log(same_label_ratio), length(adj@x))
-
-    # Convert adjacency matrix to CSR-like graph format for LBP
-    graph = build_potts_lbp_graph(adj)
 
     # Extract node potentials (log-likelihoods) from cell signatures
     node_potentials = log(cell_signatures[transcripts_df[[gene]], , drop = FALSE])

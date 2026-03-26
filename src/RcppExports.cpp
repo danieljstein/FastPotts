@@ -23,6 +23,22 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// build_potts_lbp_graph_from_edges
+List build_potts_lbp_graph_from_edges(const IntegerVector& from, const IntegerVector& to, const NumericVector& weights, const int n_nodes, const bool symmetric, const bool check_reverse);
+RcppExport SEXP _FastPotts_build_potts_lbp_graph_from_edges(SEXP fromSEXP, SEXP toSEXP, SEXP weightsSEXP, SEXP n_nodesSEXP, SEXP symmetricSEXP, SEXP check_reverseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerVector& >::type from(fromSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type to(toSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_nodes(n_nodesSEXP);
+    Rcpp::traits::input_parameter< const bool >::type symmetric(symmetricSEXP);
+    Rcpp::traits::input_parameter< const bool >::type check_reverse(check_reverseSEXP);
+    rcpp_result_gen = Rcpp::wrap(build_potts_lbp_graph_from_edges(from, to, weights, n_nodes, symmetric, check_reverse));
+    return rcpp_result_gen;
+END_RCPP
+}
 // hilbert_index_scaled_cpp
 SEXP hilbert_index_scaled_cpp(NumericMatrix coords, int bits, bool return_scaled);
 RcppExport SEXP _FastPotts_hilbert_index_scaled_cpp(SEXP coordsSEXP, SEXP bitsSEXP, SEXP return_scaledSEXP) {
@@ -98,6 +114,7 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_build_potts_lbp_graph", (DL_FUNC) &_FastPotts_build_potts_lbp_graph, 3},
+    {"_FastPotts_build_potts_lbp_graph_from_edges", (DL_FUNC) &_FastPotts_build_potts_lbp_graph_from_edges, 6},
     {"_FastPotts_hilbert_index_scaled_cpp", (DL_FUNC) &_FastPotts_hilbert_index_scaled_cpp, 3},
     {"_FastPotts_openmp_enabled_cpp", (DL_FUNC) &_FastPotts_openmp_enabled_cpp, 0},
     {"_FastPotts_omp_max_threads_cpp", (DL_FUNC) &_FastPotts_omp_max_threads_cpp, 0},

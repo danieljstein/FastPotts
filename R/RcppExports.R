@@ -77,6 +77,37 @@ build_potts_lbp_graph <- function(mat, drop_diagonal = TRUE, check_reverse = TRU
     .Call(`_FastPotts_build_potts_lbp_graph`, mat, drop_diagonal, check_reverse)
 }
 
+#' Build Potts-LBP graph inputs directly from an edge list
+#'
+#' Builds the CSR-like graph representation expected by `potts_lbp()` from a
+#' directed edge list without first materializing a sparse matrix.
+#'
+#' Duplicate directed edges are deduplicated so that each directed edge appears
+#' at most once in the returned graph. If duplicate `(from, to)` entries are
+#' supplied with different weights, an error is thrown.
+#'
+#' Node indices supplied in `from` and `to` are **1-based R indices**. Returned
+#' graph indices remain **0-based**, matching the C++ indexing expected by
+#' `potts_lbp()`.
+#'
+#' @param from Integer vector of 1-based source node indices.
+#' @param to Integer vector of 1-based destination node indices.
+#' @param weights Numeric vector of edge weights. Must either have length 1,
+#'   in which case the same weight is used for every input edge, or the same
+#'   length as `from`.
+#' @param n_nodes Integer number of nodes in the graph.
+#' @param symmetric Logical; if `TRUE`, each input edge `(u, v)` is treated as
+#'   undirected and inserted in both directions `(u, v)` and `(v, u)`.
+#' @param check_reverse Logical; if `TRUE` (default), each directed edge must
+#'   have a matching reverse edge after duplicate aggregation.
+#'
+#' @return A list with the same structure as [build_potts_lbp_graph()].
+#'
+#' @keywords internal
+build_potts_lbp_graph_from_edges <- function(from, to, weights, n_nodes, symmetric = FALSE, check_reverse = TRUE) {
+    .Call(`_FastPotts_build_potts_lbp_graph_from_edges`, from, to, weights, n_nodes, symmetric, check_reverse)
+}
+
 hilbert_index_scaled_cpp <- function(coords, bits, return_scaled = FALSE) {
     .Call(`_FastPotts_hilbert_index_scaled_cpp`, coords, bits, return_scaled)
 }

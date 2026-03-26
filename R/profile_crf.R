@@ -150,24 +150,27 @@ profile_run_crf <- function(
     knn = stage_knn$value
 
     edge_mask = as.numeric(knn$nn.dists[, -1, drop = FALSE]) <= dist_threshold
-    n_directed_edges = sum(edge_mask)
+    n_candidate_directed_edges = 2L * sum(edge_mask)
 
     stage_graph = run_stage("graph_build", {
         from = rep(seq_len(nrow(knn$nn.idx)), n_neighbors)
         to = as.numeric(knn$nn.idx[, -1, drop = FALSE])
         keep = as.numeric(knn$nn.dists[, -1, drop = FALSE]) <= dist_threshold
 
-        adj = Matrix::sparseMatrix(
-            i = c(from[keep], to[keep]),
-            j = c(to[keep], from[keep]),
-            x = 1,
-            dims = c(nrow(ordered_df), nrow(ordered_df))
+        build_potts_lbp_graph_from_edges(
+            from = from[keep],
+            to = to[keep],
+            weights = log(same_label_ratio),
+            n_nodes = nrow(ordered_df),
+            symmetric = TRUE
         )
-        adj@x = rep(log(same_label_ratio), length(adj@x))
-
-        build_potts_lbp_graph(adj)
-    }, info = list(n_nodes = nrow(ordered_df), n_directed_edges = 2L * n_directed_edges))
+    }, info = list(
+        n_nodes = nrow(ordered_df),
+        n_directed_edges = NA_integer_,
+        n_candidate_directed_edges = n_candidate_directed_edges
+    ))
     graph = stage_graph$value
+    stage_graph$info$n_directed_edges = graph$n_edges
 
     stage_node_potentials = run_stage("node_potentials", {
         log(cell_signatures[ordered_df[[gene]], , drop = FALSE])
@@ -207,6 +210,7 @@ profile_run_crf <- function(
                     n_nodes = if (is.null(info$n_nodes)) NA_integer_ else info$n_nodes,
                     n_labels = if (is.null(info$n_labels)) NA_integer_ else info$n_labels,
                     n_directed_edges = if (is.null(info$n_directed_edges)) NA_integer_ else info$n_directed_edges,
+                    n_candidate_directed_edges = if (is.null(info$n_candidate_directed_edges)) NA_integer_ else info$n_candidate_directed_edges,
                     stringsAsFactors = FALSE
                 )
             }
