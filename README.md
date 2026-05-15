@@ -29,4 +29,4 @@ library(FastPotts)
 
 ## License
 
-MIT (see LICENSE).
+GPL-3 (see `LICENSE.md`).
