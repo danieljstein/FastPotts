@@ -10,6 +10,20 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// bcc_barycentric_cpp
+List bcc_barycentric_cpp(const NumericMatrix& coords, const double s, const NumericVector& origin, const double tol);
+RcppExport SEXP _FastPotts_bcc_barycentric_cpp(SEXP coordsSEXP, SEXP sSEXP, SEXP originSEXP, SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type coords(coordsSEXP);
+    Rcpp::traits::input_parameter< const double >::type s(sSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type origin(originSEXP);
+    Rcpp::traits::input_parameter< const double >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(bcc_barycentric_cpp(coords, s, origin, tol));
+    return rcpp_result_gen;
+END_RCPP
+}
 // build_potts_lbp_graph
 List build_potts_lbp_graph(SEXP mat, const bool drop_diagonal, const bool check_reverse);
 RcppExport SEXP _FastPotts_build_potts_lbp_graph(SEXP matSEXP, SEXP drop_diagonalSEXP, SEXP check_reverseSEXP) {
@@ -113,6 +127,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_FastPotts_bcc_barycentric_cpp", (DL_FUNC) &_FastPotts_bcc_barycentric_cpp, 4},
     {"_FastPotts_build_potts_lbp_graph", (DL_FUNC) &_FastPotts_build_potts_lbp_graph, 3},
     {"_FastPotts_build_potts_lbp_graph_from_edges", (DL_FUNC) &_FastPotts_build_potts_lbp_graph_from_edges, 6},
     {"_FastPotts_hilbert_index_scaled_cpp", (DL_FUNC) &_FastPotts_hilbert_index_scaled_cpp, 3},
