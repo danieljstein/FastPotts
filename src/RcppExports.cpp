@@ -125,6 +125,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// tri_barycentric_cpp
+List tri_barycentric_cpp(const NumericMatrix& coords, const double s, const NumericVector& origin, const double tol);
+RcppExport SEXP _FastPotts_tri_barycentric_cpp(SEXP coordsSEXP, SEXP sSEXP, SEXP originSEXP, SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type coords(coordsSEXP);
+    Rcpp::traits::input_parameter< const double >::type s(sSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type origin(originSEXP);
+    Rcpp::traits::input_parameter< const double >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(tri_barycentric_cpp(coords, s, origin, tol));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_bcc_barycentric_cpp", (DL_FUNC) &_FastPotts_bcc_barycentric_cpp, 4},
@@ -135,6 +149,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_omp_max_threads_cpp", (DL_FUNC) &_FastPotts_omp_max_threads_cpp, 0},
     {"_FastPotts_potts_lbp_cpp", (DL_FUNC) &_FastPotts_potts_lbp_cpp, 9},
     {"_FastPotts_potts_lbp_parallel_cpp", (DL_FUNC) &_FastPotts_potts_lbp_parallel_cpp, 10},
+    {"_FastPotts_tri_barycentric_cpp", (DL_FUNC) &_FastPotts_tri_barycentric_cpp, 4},
     {NULL, NULL, 0}
 };
 
