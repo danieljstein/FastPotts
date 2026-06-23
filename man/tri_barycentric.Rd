@@ -40,6 +40,11 @@ and returns its three vertices and barycentric weights. Away from triangle
 boundaries exactly three basis functions are non-zero. On edges or vertices,
 some returned weights may be zero. The support of each lattice-point basis
 function is a regular hexagon.
+
+The Delaunay triangles are equilateral with side length \code{s}. Thus for
+\code{s = 1}, each triangle has side length \code{1}. The regular hexagonal support of
+each lattice-point basis function has side length \code{s}, vertex-to-vertex
+diameter \code{2 * s}, and flat-to-flat diameter \code{sqrt(3) * s}.
 }
 \examples{
 coords <- matrix(c(0.25, 0.25), ncol = 2)

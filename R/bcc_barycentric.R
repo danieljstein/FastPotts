@@ -10,6 +10,11 @@
 #' tetrahedron boundaries exactly four basis functions are non-zero. On faces,
 #' edges, or vertices, some returned weights may be zero.
 #'
+#' The Delaunay tetrahedra are all congruent. For mesh size `s`, each
+#' tetrahedron has four edges of length `sqrt(3) * s` and two opposite edges of
+#' length `2 * s`. Thus for `s = 1`, the tetrahedron edge lengths are
+#' `sqrt(3), sqrt(3), sqrt(3), sqrt(3), 2, 2`.
+#'
 #' @param coords Numeric matrix or data frame with three columns containing
 #'   query coordinates.
 #' @param s Positive numeric mesh size.

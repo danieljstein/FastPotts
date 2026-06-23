@@ -39,6 +39,11 @@ For each query point, the function finds the containing BCC Delaunay
 tetrahedron and returns its four vertices and barycentric weights. Away from
 tetrahedron boundaries exactly four basis functions are non-zero. On faces,
 edges, or vertices, some returned weights may be zero.
+
+The Delaunay tetrahedra are all congruent. For mesh size \code{s}, each
+tetrahedron has four edges of length \code{sqrt(3) * s} and two opposite edges of
+length \code{2 * s}. Thus for \code{s = 1}, the tetrahedron edge lengths are
+\verb{sqrt(3), sqrt(3), sqrt(3), sqrt(3), 2, 2}.
 }
 \examples{
 coords <- matrix(c(0.75, 0.75, 0.25), ncol = 3)

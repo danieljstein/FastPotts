@@ -10,6 +10,11 @@
 #' some returned weights may be zero. The support of each lattice-point basis
 #' function is a regular hexagon.
 #'
+#' The Delaunay triangles are equilateral with side length `s`. Thus for
+#' `s = 1`, each triangle has side length `1`. The regular hexagonal support of
+#' each lattice-point basis function has side length `s`, vertex-to-vertex
+#' diameter `2 * s`, and flat-to-flat diameter `sqrt(3) * s`.
+#'
 #' @param coords Numeric matrix or data frame with two columns containing query
 #'   coordinates.
 #' @param s Positive numeric mesh size. This is the side length of each
