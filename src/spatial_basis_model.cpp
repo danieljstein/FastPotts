@@ -49,6 +49,8 @@ List spatial_basis_objective_cpp(
     const int regularization,
     const double delta,
     const double sigma,
+    const int purity,
+    const double purity_lambda,
     const int n_threads,
     const int n_basis,
     const int n_cell_types
@@ -84,6 +86,12 @@ List spatial_basis_objective_cpp(
     }
     if (n_threads < 0) {
         stop("n_threads must be NULL or a positive integer.");
+    }
+    if (purity < 0 || purity > 2) {
+        stop("purity must be 0, 1, or 2.");
+    }
+    if (!R_finite(purity_lambda) || purity_lambda < 0.0) {
+        stop("purity_lambda must be a non-negative finite number.");
     }
 
     for (int i = 0; i < n; ++i) {
@@ -177,6 +185,52 @@ List spatial_basis_objective_cpp(
         objective += objective_by_thread[tid];
         for (int j = 0; j < n_par; ++j) {
             grad[j] += grad_by_thread[tid][j];
+        }
+    }
+
+    if (purity_lambda > 0.0 && purity > 0) {
+        std::vector<double> logits(n_cell_types);
+        std::vector<double> pi(n_cell_types);
+        std::vector<double> d_penalty_d_pi(n_cell_types);
+
+        for (int m = 0; m < n_basis; ++m) {
+            for (int k = 0; k < n_free; ++k) {
+                logits[k] = par[m + n_basis * k];
+            }
+            logits[n_free] = 0.0;
+
+            const double log_z = log_sum_exp(logits);
+            for (int k = 0; k < n_cell_types; ++k) {
+                pi[k] = std::exp(logits[k] - log_z);
+            }
+
+            double penalty = 0.0;
+
+            if (purity == 1) {
+                for (int k = 0; k < n_cell_types; ++k) {
+                    penalty -= pi[k] * std::log(pi[k]);
+                    d_penalty_d_pi[k] = -(std::log(pi[k]) + 1.0);
+                }
+            } else {
+                double sum_pi2 = 0.0;
+                for (int k = 0; k < n_cell_types; ++k) {
+                    sum_pi2 += pi[k] * pi[k];
+                    d_penalty_d_pi[k] = -2.0 * pi[k];
+                }
+                penalty = 1.0 - sum_pi2;
+            }
+
+            double expected_derivative = 0.0;
+            for (int k = 0; k < n_cell_types; ++k) {
+                expected_derivative += pi[k] * d_penalty_d_pi[k];
+            }
+
+            objective += purity_lambda * penalty;
+
+            for (int k = 0; k < n_free; ++k) {
+                grad[m + n_basis * k] += purity_lambda * pi[k] *
+                    (d_penalty_d_pi[k] - expected_derivative);
+            }
         }
     }
 

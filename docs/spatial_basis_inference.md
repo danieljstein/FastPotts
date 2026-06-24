@@ -354,6 +354,61 @@ For the 3D BCC lattice, neighbors include:
 The implementation only includes neighbor edges where both endpoint basis
 points are present in the local basis set touched by the transcripts.
 
+## Basis-Point Purity
+
+The spatial smoothing penalty controls how much neighboring basis points agree.
+A separate purity penalty can encourage each individual basis point to place
+most of its probability mass on one or a few cell types.
+
+Let
+
+$$
+\pi_{mk}
+=
+\frac{\exp(w_{km})}{\sum_{\ell=1}^K \exp(w_{\ell m})}
+$$
+
+be the cell-type prior at basis point $m$, with the reference-class logit
+$w_{Km}=0$.
+
+The implementation supports:
+
+- `purity = "none"`: no basis-point purity penalty
+- `purity = "entropy"`: penalize high entropy
+- `purity = "gini"`: penalize Gini impurity
+
+The entropy penalty is:
+
+$$
+R_{\text{entropy}}(W)
+=
+\alpha
+\sum_m
+\left[
+-
+\sum_{k=1}^K
+\pi_{mk}\log \pi_{mk}
+\right].
+$$
+
+The Gini impurity penalty is:
+
+$$
+R_{\text{gini}}(W)
+=
+\alpha
+\sum_m
+\left[
+1 -
+\sum_{k=1}^K
+\pi_{mk}^2
+\right].
+$$
+
+Here $\alpha$ is `purity_lambda`. Both penalties are minimized when each
+basis point is close to a one-hot cell-type prior. Gini is bounded and often a
+gentler first choice; entropy is sharper near the simplex corners.
+
 ## Gradient Derivation
 
 Let
@@ -465,6 +520,37 @@ $$
 =
 \exp\left(-\frac{r^2}{2\sigma^2}\right)
 \frac{r}{\sigma^2}.
+$$
+
+For a general purity penalty $h(\pi_m)$, the softmax chain rule gives:
+
+$$
+\frac{\partial h}{\partial w_{km}}
+=
+\pi_{mk}
+\left[
+\frac{\partial h}{\partial \pi_{mk}}
+-
+\sum_{\ell=1}^K
+\pi_{m\ell}
+\frac{\partial h}{\partial \pi_{m\ell}}
+\right].
+$$
+
+For entropy,
+
+$$
+\frac{\partial h}{\partial \pi_{mk}}
+=
+-(\log \pi_{mk} + 1).
+$$
+
+For Gini impurity,
+
+$$
+\frac{\partial h}{\partial \pi_{mk}}
+=
+-2\pi_{mk}.
 $$
 
 ## Optimization

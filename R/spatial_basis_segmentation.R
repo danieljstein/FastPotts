@@ -110,6 +110,10 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
 #'   `regularization = "huber"`.
 #' @param sigma Positive bounded-penalty saturation scale in logit units. Used
 #'   only when `regularization = "bounded"`.
+#' @param purity Character; one of `"none"`, `"entropy"`, or `"gini"`.
+#'   Entropy and Gini purity penalties encourage each basis point's cell-type
+#'   prior to concentrate on fewer cell types.
+#' @param purity_lambda Non-negative strength of the basis-point purity penalty.
 #' @param signature_floor Positive floor applied to signatures before
 #'   log-transforming.
 #' @param normalize_signatures Logical; if `TRUE`, normalize each cell-type
@@ -166,6 +170,8 @@ spatial_basis_segmentation <- function(
     regularization = c("quadratic", "huber", "bounded"),
     delta = 1,
     sigma = 1,
+    purity = c("none", "entropy", "gini"),
+    purity_lambda = 0,
     signature_floor = 1e-12,
     normalize_signatures = TRUE,
     maxit = 100L,
@@ -175,6 +181,7 @@ spatial_basis_segmentation <- function(
 ) {
     basis = match.arg(basis)
     regularization = match.arg(regularization)
+    purity = match.arg(purity)
     d = if (basis == "tri") 2L else 3L
 
     if (is.null(origin)) {
@@ -191,6 +198,9 @@ spatial_basis_segmentation <- function(
     }
     if (length(sigma) != 1L || !is.finite(sigma) || sigma <= 0) {
         stop("sigma must be a positive finite number.")
+    }
+    if (length(purity_lambda) != 1L || !is.finite(purity_lambda) || purity_lambda < 0) {
+        stop("purity_lambda must be a non-negative finite number.")
     }
     if (length(signature_floor) != 1L || !is.finite(signature_floor) || signature_floor <= 0) {
         stop("signature_floor must be a positive finite number.")
@@ -277,6 +287,7 @@ spatial_basis_segmentation <- function(
     edge_from0 = as.integer(basis_edges[, "from"] - 1L)
     edge_to0 = as.integer(basis_edges[, "to"] - 1L)
     regularization_id = match(regularization, c("quadratic", "huber", "bounded")) - 1L
+    purity_id = match(purity, c("none", "entropy", "gini")) - 1L
 
     objective = function(par) {
         spatial_basis_objective_cpp(
@@ -291,6 +302,8 @@ spatial_basis_segmentation <- function(
             regularization = regularization_id,
             delta = delta,
             sigma = sigma,
+            purity = purity_id,
+            purity_lambda = purity_lambda,
             n_threads = n_threads,
             n_basis = M,
             n_cell_types = K

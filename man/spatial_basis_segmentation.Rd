@@ -21,6 +21,8 @@ spatial_basis_segmentation(
   regularization = c("quadratic", "huber", "bounded"),
   delta = 1,
   sigma = 1,
+  purity = c("none", "entropy", "gini"),
+  purity_lambda = 0,
   signature_floor = 1e-12,
   normalize_signatures = TRUE,
   maxit = 100L,
@@ -76,6 +78,12 @@ bounded smoothing uses \code{1 - exp(-d^2 / (2 * sigma^2))}.}
 
 \item{sigma}{Positive bounded-penalty saturation scale in logit units. Used
 only when \code{regularization = "bounded"}.}
+
+\item{purity}{Character; one of \code{"none"}, \code{"entropy"}, or \code{"gini"}.
+Entropy and Gini purity penalties encourage each basis point's cell-type
+prior to concentrate on fewer cell types.}
+
+\item{purity_lambda}{Non-negative strength of the basis-point purity penalty.}
 
 \item{signature_floor}{Positive floor applied to signatures before
 log-transforming.}
