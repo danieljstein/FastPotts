@@ -85,7 +85,10 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
 #'   type.
 #' @param basis Character; either `"tri"` for a 2D triangular lattice or
 #'   `"bcc"` for a 3D BCC lattice.
-#' @param s Positive numeric mesh size.
+#' @param s Positive numeric mesh size. For `basis = "tri"`, this is the side
+#'   length of each equilateral Delaunay triangle. For `basis = "bcc"`, this is
+#'   the distance between same-parity BCC lattice points along a coordinate
+#'   axis, matching the longest Delaunay tetrahedron edge length.
 #' @param x Character; column name for x-coordinates.
 #' @param y Character; column name for y-coordinates.
 #' @param z Character; column name for z-coordinates. Used only when

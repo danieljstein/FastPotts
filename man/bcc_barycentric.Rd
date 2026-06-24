@@ -10,7 +10,9 @@ bcc_barycentric(coords, s, origin = c(0, 0, 0), tol = 1e-10, n_threads = NULL)
 \item{coords}{Numeric matrix or data frame with three columns containing
 query coordinates.}
 
-\item{s}{Positive numeric mesh size.}
+\item{s}{Positive numeric mesh size. This is the distance between
+same-parity BCC lattice points along each coordinate axis, matching the
+longest Delaunay tetrahedron edge length.}
 
 \item{origin}{Numeric vector of length three giving the lattice origin.}
 
@@ -27,14 +29,14 @@ A list with components:
 \item{points}{Numeric array of dimension \verb{n x 4 x 3} containing the four
 active lattice points for each query point.}
 \item{lattice}{Integer array of dimension \verb{n x 4 x 3} containing the
-normalized BCC lattice coordinates before multiplying by \code{s} and adding
-\code{origin}.}
+normalized BCC lattice coordinates before multiplying by \code{s / 2} and
+adding \code{origin}.}
 }
 }
 \description{
 Computes the four active piecewise-linear basis functions for each point on
 a body-centered cubic (BCC) lattice. The lattice is the union of
-\verb{(2*s*i, 2*s*j, 2*s*k)} and \verb{(s + 2*s*i, s + 2*s*j, s + 2*s*k)}, optionally
+\verb{(s*i, s*j, s*k)} and \verb{(s/2 + s*i, s/2 + s*j, s/2 + s*k)}, optionally
 shifted by \code{origin}.
 }
 \details{
@@ -44,9 +46,9 @@ tetrahedron boundaries exactly four basis functions are non-zero. On faces,
 edges, or vertices, some returned weights may be zero.
 
 The Delaunay tetrahedra are all congruent. For mesh size \code{s}, each
-tetrahedron has four edges of length \code{sqrt(3) * s} and two opposite edges of
-length \code{2 * s}. Thus for \code{s = 1}, the tetrahedron edge lengths are
-\verb{sqrt(3), sqrt(3), sqrt(3), sqrt(3), 2, 2}.
+tetrahedron has four edges of length \code{sqrt(3) * s / 2} and two opposite
+edges of length \code{s}. Thus for \code{s = 1}, the tetrahedron edge lengths are
+\verb{sqrt(3) / 2, sqrt(3) / 2, sqrt(3) / 2, sqrt(3) / 2, 1, 1}.
 }
 \examples{
 coords <- matrix(c(0.75, 0.75, 0.25), ncol = 3)

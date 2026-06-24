@@ -2,7 +2,7 @@
 #'
 #' Computes the four active piecewise-linear basis functions for each point on
 #' a body-centered cubic (BCC) lattice. The lattice is the union of
-#' `(2*s*i, 2*s*j, 2*s*k)` and `(s + 2*s*i, s + 2*s*j, s + 2*s*k)`, optionally
+#' `(s*i, s*j, s*k)` and `(s/2 + s*i, s/2 + s*j, s/2 + s*k)`, optionally
 #' shifted by `origin`.
 #'
 #' For each query point, the function finds the containing BCC Delaunay
@@ -11,13 +11,15 @@
 #' edges, or vertices, some returned weights may be zero.
 #'
 #' The Delaunay tetrahedra are all congruent. For mesh size `s`, each
-#' tetrahedron has four edges of length `sqrt(3) * s` and two opposite edges of
-#' length `2 * s`. Thus for `s = 1`, the tetrahedron edge lengths are
-#' `sqrt(3), sqrt(3), sqrt(3), sqrt(3), 2, 2`.
+#' tetrahedron has four edges of length `sqrt(3) * s / 2` and two opposite
+#' edges of length `s`. Thus for `s = 1`, the tetrahedron edge lengths are
+#' `sqrt(3) / 2, sqrt(3) / 2, sqrt(3) / 2, sqrt(3) / 2, 1, 1`.
 #'
 #' @param coords Numeric matrix or data frame with three columns containing
 #'   query coordinates.
-#' @param s Positive numeric mesh size.
+#' @param s Positive numeric mesh size. This is the distance between
+#'   same-parity BCC lattice points along each coordinate axis, matching the
+#'   longest Delaunay tetrahedron edge length.
 #' @param origin Numeric vector of length three giving the lattice origin.
 #' @param tol Numeric tolerance used for tetrahedron boundary checks.
 #' @param n_threads Integer number of OpenMP threads. If `NULL`, uses the
@@ -30,8 +32,8 @@
 #'   \item{points}{Numeric array of dimension `n x 4 x 3` containing the four
 #'     active lattice points for each query point.}
 #'   \item{lattice}{Integer array of dimension `n x 4 x 3` containing the
-#'     normalized BCC lattice coordinates before multiplying by `s` and adding
-#'     `origin`.}
+#'     normalized BCC lattice coordinates before multiplying by `s / 2` and
+#'     adding `origin`.}
 #' }
 #'
 #' @examples
@@ -82,7 +84,7 @@ bcc_barycentric <- function(coords, s, origin = c(0, 0, 0), tol = 1e-10, n_threa
 
     bcc_barycentric_cpp(
         coords,
-        s = as.numeric(s),
+        s = as.numeric(s) / 2,
         origin = as.numeric(origin),
         tol = as.numeric(tol),
         n_threads = n_threads

@@ -39,7 +39,10 @@ type.}
 \item{basis}{Character; either \code{"tri"} for a 2D triangular lattice or
 \code{"bcc"} for a 3D BCC lattice.}
 
-\item{s}{Positive numeric mesh size.}
+\item{s}{Positive numeric mesh size. For \code{basis = "tri"}, this is the side
+length of each equilateral Delaunay triangle. For \code{basis = "bcc"}, this is
+the distance between same-parity BCC lattice points along a coordinate
+axis, matching the longest Delaunay tetrahedron edge length.}
 
 \item{x}{Character; column name for x-coordinates.}
 

@@ -33,6 +33,16 @@ The spatial domain is represented by a lattice basis:
 - `basis = "tri"`: 2D triangular lattice
 - `basis = "bcc"`: 3D body-centered cubic lattice
 
+The user-facing mesh size `s` is defined as the long Delaunay-cell edge scale:
+
+- in 2D, triangular Delaunay cells are equilateral triangles with side length
+  `s`
+- in 3D, BCC Delaunay tetrahedra have two opposite long edges of length `s`
+  and four shorter edges of length `sqrt(3) * s / 2`
+
+With this convention, increasing or decreasing `s` has a comparable
+interpretation in the 2D and 3D APIs.
+
 Each transcript location has a small number of active basis functions:
 
 - 3 active basis functions for the 2D triangular lattice
@@ -491,8 +501,9 @@ This is a good default for the current model because:
 The current implementation is intentionally a first MAP estimator:
 
 - Signatures are fixed during inference.
-- The regularizer is quadratic, so it encourages smooth fields and may blur
-  sharp cell boundaries.
+- Quadratic regularization encourages smooth fields and may blur sharp cell
+  boundaries. Huber and bounded regularization are available to reduce this,
+  but introduce additional logit-scale parameters.
 - Only basis points touched by at least one transcript are included.
 - The final cell type is used as the reference class.
 
