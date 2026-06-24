@@ -25,6 +25,7 @@ spatial_basis_segmentation(
   normalize_signatures = TRUE,
   maxit = 100L,
   reltol = 1e-06,
+  n_threads = NULL,
   show_progress = TRUE
 )
 }
@@ -83,6 +84,9 @@ signature column after applying \code{signature_floor}.}
 
 \item{reltol}{Approximate relative convergence tolerance. For the
 \code{"L-BFGS-B"} optimizer this is converted to \code{factr = reltol / .Machine$double.eps}.}
+
+\item{n_threads}{Integer number of OpenMP threads for objective/gradient and
+prediction calculations. If \code{NULL}, uses the OpenMP runtime default.}
 
 \item{show_progress}{Logical; if \code{TRUE}, prints progress messages.}
 }

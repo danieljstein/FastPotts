@@ -115,6 +115,8 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
 #' @param reltol Approximate relative convergence tolerance. For the
 #'   `"L-BFGS-B"` optimizer this is converted to `factr = reltol /
 #'   .Machine$double.eps`.
+#' @param n_threads Integer number of OpenMP threads for objective/gradient and
+#'   prediction calculations. If `NULL`, uses the OpenMP runtime default.
 #' @param show_progress Logical; if `TRUE`, prints progress messages.
 #'
 #' @return A list with components:
@@ -165,6 +167,7 @@ spatial_basis_segmentation <- function(
     normalize_signatures = TRUE,
     maxit = 100L,
     reltol = 1e-6,
+    n_threads = NULL,
     show_progress = TRUE
 ) {
     basis = match.arg(basis)
@@ -188,6 +191,18 @@ spatial_basis_segmentation <- function(
     }
     if (length(signature_floor) != 1L || !is.finite(signature_floor) || signature_floor <= 0) {
         stop("signature_floor must be a positive finite number.")
+    }
+    if (is.null(n_threads)) {
+        n_threads = 0L
+    } else if (
+        length(n_threads) != 1L ||
+        !is.finite(n_threads) ||
+        n_threads < 1 ||
+        n_threads != as.integer(n_threads)
+    ) {
+        stop("n_threads must be NULL or a positive integer.")
+    } else {
+        n_threads = as.integer(n_threads)
     }
 
     df = transcripts_df
@@ -272,6 +287,7 @@ spatial_basis_segmentation <- function(
             regularization = regularization_id,
             delta = delta,
             sigma = sigma,
+            n_threads = n_threads,
             n_basis = M,
             n_cell_types = K
         )
@@ -305,6 +321,7 @@ spatial_basis_segmentation <- function(
         gene_index = as.integer(gene_index - 1L),
         log_signature = log_signature,
         n_basis = M,
+        n_threads = n_threads,
         n_cell_types = K
     )
 

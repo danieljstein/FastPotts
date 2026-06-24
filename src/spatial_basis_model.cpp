@@ -1,9 +1,25 @@
 // [[Rcpp::depends(Rcpp)]]
+// [[Rcpp::plugins(openmp)]]
 #include <Rcpp.h>
 #include <algorithm>
 #include <cmath>
 #include <vector>
 using namespace Rcpp;
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+static inline int resolve_threads(const int n_threads) {
+#ifdef _OPENMP
+    if (n_threads <= 0) {
+        return omp_get_max_threads();
+    }
+    return n_threads;
+#else
+    return 1;
+#endif
+}
 
 static inline double log_sum_exp(const std::vector<double>& x) {
     double mx = x[0];
@@ -33,6 +49,7 @@ List spatial_basis_objective_cpp(
     const int regularization,
     const double delta,
     const double sigma,
+    const int n_threads,
     const int n_basis,
     const int n_cell_types
 ) {
@@ -65,25 +82,57 @@ List spatial_basis_objective_cpp(
     if (!R_finite(sigma) || sigma <= 0.0) {
         stop("sigma must be a positive finite number.");
     }
+    if (n_threads < 0) {
+        stop("n_threads must be NULL or a positive integer.");
+    }
 
-    NumericVector grad(par.size());
-    std::vector<double> f(n_cell_types);
-    std::vector<double> log_post(n_cell_types);
-    std::vector<double> p(n_cell_types);
-    std::vector<double> q(n_cell_types);
+    for (int i = 0; i < n; ++i) {
+        const int g = gene_index[i];
+        if (g < 0 || g >= log_signature.nrow()) {
+            stop("gene_index contains an out-of-range gene index.");
+        }
 
-    double objective = 0.0;
+        for (int a = 0; a < n_active; ++a) {
+            const int m = basis_id(i, a);
+            if (m < 0 || m >= n_basis) {
+                stop("basis_id contains an out-of-range basis index.");
+            }
+        }
+    }
 
+    const int actual_threads = resolve_threads(n_threads);
+    const int n_par = par.size();
+    std::vector<double> objective_by_thread(actual_threads, 0.0);
+    std::vector< std::vector<double> > grad_by_thread(
+        actual_threads,
+        std::vector<double>(n_par, 0.0)
+    );
+
+#ifdef _OPENMP
+#pragma omp parallel num_threads(actual_threads)
+#endif
+    {
+#ifdef _OPENMP
+        const int tid = omp_get_thread_num();
+#else
+        const int tid = 0;
+#endif
+        std::vector<double> f(n_cell_types);
+        std::vector<double> log_post(n_cell_types);
+        std::vector<double> p(n_cell_types);
+        std::vector<double> q(n_cell_types);
+        double local_objective = 0.0;
+        std::vector<double>& local_grad = grad_by_thread[tid];
+
+#ifdef _OPENMP
+#pragma omp for
+#endif
     for (int i = 0; i < n; ++i) {
         std::fill(f.begin(), f.end(), 0.0);
 
         for (int a = 0; a < n_active; ++a) {
             const int m = basis_id(i, a);
             const double phi = basis_weight(i, a);
-
-            if (m < 0 || m >= n_basis) {
-                stop("basis_id contains an out-of-range basis index.");
-            }
 
             for (int k = 0; k < n_free; ++k) {
                 f[k] += phi * par[m + n_basis * k];
@@ -96,16 +145,13 @@ List spatial_basis_objective_cpp(
         }
 
         const int g = gene_index[i];
-        if (g < 0 || g >= log_signature.nrow()) {
-            stop("gene_index contains an out-of-range gene index.");
-        }
 
         for (int k = 0; k < n_cell_types; ++k) {
             log_post[k] = log_signature(g, k) + f[k];
         }
 
         const double log_z_post = log_sum_exp(log_post);
-        objective -= log_z_post - log_z_prior;
+        local_objective -= log_z_post - log_z_prior;
 
         for (int k = 0; k < n_cell_types; ++k) {
             q[k] = std::exp(log_post[k] - log_z_post);
@@ -116,8 +162,21 @@ List spatial_basis_objective_cpp(
             const double phi = basis_weight(i, a);
 
             for (int k = 0; k < n_free; ++k) {
-                grad[m + n_basis * k] += phi * (p[k] - q[k]);
+                local_grad[m + n_basis * k] += phi * (p[k] - q[k]);
             }
+        }
+    }
+
+        objective_by_thread[tid] = local_objective;
+    }
+
+    double objective = 0.0;
+    NumericVector grad(n_par);
+
+    for (int tid = 0; tid < actual_threads; ++tid) {
+        objective += objective_by_thread[tid];
+        for (int j = 0; j < n_par; ++j) {
+            grad[j] += grad_by_thread[tid][j];
         }
     }
 
@@ -181,6 +240,7 @@ List spatial_basis_predict_cpp(
     const IntegerVector& gene_index,
     const NumericMatrix& log_signature,
     const int n_basis,
+    const int n_threads,
     const int n_cell_types
 ) {
     const int n = basis_id.nrow();
@@ -190,14 +250,40 @@ List spatial_basis_predict_cpp(
     if (par.size() != n_basis * n_free) {
         stop("par has incompatible length.");
     }
+    if (n_threads < 0) {
+        stop("n_threads must be NULL or a positive integer.");
+    }
+
+    for (int i = 0; i < n; ++i) {
+        const int g = gene_index[i];
+        if (g < 0 || g >= log_signature.nrow()) {
+            stop("gene_index contains an out-of-range gene index.");
+        }
+
+        for (int a = 0; a < n_active; ++a) {
+            const int m = basis_id(i, a);
+            if (m < 0 || m >= n_basis) {
+                stop("basis_id contains an out-of-range basis index.");
+            }
+        }
+    }
 
     NumericMatrix prior(n, n_cell_types);
     NumericMatrix posterior(n, n_cell_types);
     NumericMatrix logits(n, n_cell_types);
 
-    std::vector<double> f(n_cell_types);
-    std::vector<double> log_post(n_cell_types);
+    const int actual_threads = resolve_threads(n_threads);
 
+#ifdef _OPENMP
+#pragma omp parallel num_threads(actual_threads)
+#endif
+    {
+        std::vector<double> f(n_cell_types);
+        std::vector<double> log_post(n_cell_types);
+
+#ifdef _OPENMP
+#pragma omp for
+#endif
     for (int i = 0; i < n; ++i) {
         std::fill(f.begin(), f.end(), 0.0);
 
@@ -223,6 +309,7 @@ List spatial_basis_predict_cpp(
         for (int k = 0; k < n_cell_types; ++k) {
             posterior(i, k) = std::exp(log_post[k] - log_z_post);
         }
+    }
     }
 
     return List::create(
