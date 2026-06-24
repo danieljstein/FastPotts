@@ -20,6 +20,8 @@
 #' @param s Positive numeric mesh size.
 #' @param origin Numeric vector of length three giving the lattice origin.
 #' @param tol Numeric tolerance used for tetrahedron boundary checks.
+#' @param n_threads Integer number of OpenMP threads. If `NULL`, uses the
+#'   OpenMP runtime default.
 #'
 #' @return A list with components:
 #' \describe{
@@ -38,7 +40,7 @@
 #' rowSums(bcc$weights)
 #'
 #' @export
-bcc_barycentric <- function(coords, s, origin = c(0, 0, 0), tol = 1e-10) {
+bcc_barycentric <- function(coords, s, origin = c(0, 0, 0), tol = 1e-10, n_threads = NULL) {
     coords <- as.matrix(coords)
 
     if (ncol(coords) != 3L) {
@@ -65,5 +67,24 @@ bcc_barycentric <- function(coords, s, origin = c(0, 0, 0), tol = 1e-10) {
         stop("tol must be a non-negative finite number.")
     }
 
-    bcc_barycentric_cpp(coords, s = as.numeric(s), origin = as.numeric(origin), tol = as.numeric(tol))
+    if (is.null(n_threads)) {
+        n_threads <- 0L
+    } else if (
+        length(n_threads) != 1L ||
+        !is.finite(n_threads) ||
+        n_threads < 1 ||
+        n_threads != as.integer(n_threads)
+    ) {
+        stop("n_threads must be NULL or a positive integer.")
+    } else {
+        n_threads <- as.integer(n_threads)
+    }
+
+    bcc_barycentric_cpp(
+        coords,
+        s = as.numeric(s),
+        origin = as.numeric(origin),
+        tol = as.numeric(tol),
+        n_threads = n_threads
+    )
 }

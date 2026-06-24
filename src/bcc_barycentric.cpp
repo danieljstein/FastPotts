@@ -1,9 +1,25 @@
 // [[Rcpp::depends(Rcpp)]]
+// [[Rcpp::plugins(openmp)]]
 #include <Rcpp.h>
 #include <algorithm>
 #include <cmath>
 #include <vector>
 using namespace Rcpp;
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+static inline int resolve_threads(const int n_threads) {
+#ifdef _OPENMP
+    if (n_threads <= 0) {
+        return omp_get_max_threads();
+    }
+    return n_threads;
+#else
+    return 1;
+#endif
+}
 
 struct BccPoint {
     int x;
@@ -133,7 +149,8 @@ List bcc_barycentric_cpp(
     const NumericMatrix& coords,
     const double s,
     const NumericVector& origin,
-    const double tol = 1e-10
+    const double tol = 1e-10,
+    const int n_threads = 0
 ) {
     const int n = coords.nrow();
 
@@ -154,22 +171,36 @@ List bcc_barycentric_cpp(
     if (!R_finite(tol) || tol < 0.0) {
         stop("tol must be a non-negative finite number.");
     }
+    if (n_threads < 0) {
+        stop("n_threads must be NULL or a positive integer.");
+    }
+    for (int row = 0; row < n; ++row) {
+        if (
+            !R_finite(coords(row, 0)) ||
+            !R_finite(coords(row, 1)) ||
+            !R_finite(coords(row, 2))
+        ) {
+            stop("coords contains non-finite values.");
+        }
+    }
 
     NumericMatrix weights(n, 4);
     NumericVector points(static_cast<R_xlen_t>(n) * 4 * 3);
     IntegerVector lattice(static_cast<R_xlen_t>(n) * 4 * 3);
+    IntegerVector found_rows(n);
 
     points.attr("dim") = IntegerVector::create(n, 4, 3);
     lattice.attr("dim") = IntegerVector::create(n, 4, 3);
 
+    const int actual_threads = resolve_threads(n_threads);
+
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(actual_threads)
+#endif
     for (int row = 0; row < n; ++row) {
         const double qx = (coords(row, 0) - origin[0]) / s;
         const double qy = (coords(row, 1) - origin[1]) / s;
         const double qz = (coords(row, 2) - origin[2]) / s;
-
-        if (!R_finite(qx) || !R_finite(qy) || !R_finite(qz)) {
-            stop("coords contains non-finite values.");
-        }
 
         BccPoint candidates[16];
         int cidx = 0;
@@ -216,8 +247,10 @@ List bcc_barycentric_cpp(
         }
 
         if (!found) {
-            stop("No containing BCC tetrahedron found for row %d.", row + 1);
+            found_rows[row] = 0;
+            continue;
         }
+        found_rows[row] = 1;
 
         for (int a = 0; a < 4; ++a) {
             weights(row, a) = w[a];
@@ -230,6 +263,12 @@ List bcc_barycentric_cpp(
                 lattice[out_idx] = normalized[dim];
                 points[out_idx] = origin[dim] + s * static_cast<double>(normalized[dim]);
             }
+        }
+    }
+
+    for (int row = 0; row < n; ++row) {
+        if (found_rows[row] == 0) {
+            stop("No containing BCC tetrahedron found for row %d.", row + 1);
         }
     }
 

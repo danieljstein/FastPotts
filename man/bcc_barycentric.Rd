@@ -4,7 +4,7 @@
 \alias{bcc_barycentric}
 \title{Barycentric coordinates on a body-centered cubic lattice}
 \usage{
-bcc_barycentric(coords, s, origin = c(0, 0, 0), tol = 1e-10)
+bcc_barycentric(coords, s, origin = c(0, 0, 0), tol = 1e-10, n_threads = NULL)
 }
 \arguments{
 \item{coords}{Numeric matrix or data frame with three columns containing
@@ -15,6 +15,9 @@ query coordinates.}
 \item{origin}{Numeric vector of length three giving the lattice origin.}
 
 \item{tol}{Numeric tolerance used for tetrahedron boundary checks.}
+
+\item{n_threads}{Integer number of OpenMP threads. If \code{NULL}, uses the
+OpenMP runtime default.}
 }
 \value{
 A list with components:

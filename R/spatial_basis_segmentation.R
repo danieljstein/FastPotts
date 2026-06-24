@@ -204,6 +204,7 @@ spatial_basis_segmentation <- function(
     } else {
         n_threads = as.integer(n_threads)
     }
+    basis_n_threads = if (n_threads == 0L) NULL else n_threads
 
     df = transcripts_df
 
@@ -250,9 +251,9 @@ spatial_basis_segmentation <- function(
         message("Computing spatial basis interpolation...")
     }
     bary = if (basis == "tri") {
-        tri_barycentric(coords, s = s, origin = origin)
+        tri_barycentric(coords, s = s, origin = origin, n_threads = basis_n_threads)
     } else {
-        bcc_barycentric(coords, s = s, origin = origin)
+        bcc_barycentric(coords, s = s, origin = origin, n_threads = basis_n_threads)
     }
     design = basis_design_from_barycentric(bary)
 

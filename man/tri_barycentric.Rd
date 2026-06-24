@@ -4,7 +4,7 @@
 \alias{tri_barycentric}
 \title{Barycentric coordinates on a triangular lattice}
 \usage{
-tri_barycentric(coords, s, origin = c(0, 0), tol = 1e-10)
+tri_barycentric(coords, s, origin = c(0, 0), tol = 1e-10, n_threads = NULL)
 }
 \arguments{
 \item{coords}{Numeric matrix or data frame with two columns containing query
@@ -16,6 +16,9 @@ equilateral triangle.}
 \item{origin}{Numeric vector of length two giving the lattice origin.}
 
 \item{tol}{Numeric tolerance used for triangle boundary checks.}
+
+\item{n_threads}{Integer number of OpenMP threads. If \code{NULL}, uses the
+OpenMP runtime default.}
 }
 \value{
 A list with components:

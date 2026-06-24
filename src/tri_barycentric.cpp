@@ -1,7 +1,23 @@
 // [[Rcpp::depends(Rcpp)]]
+// [[Rcpp::plugins(openmp)]]
 #include <Rcpp.h>
 #include <cmath>
 using namespace Rcpp;
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+static inline int resolve_threads(const int n_threads) {
+#ifdef _OPENMP
+    if (n_threads <= 0) {
+        return omp_get_max_threads();
+    }
+    return n_threads;
+#else
+    return 1;
+#endif
+}
 
 // C++ backend for tri_barycentric().
 // [[Rcpp::export]]
@@ -9,7 +25,8 @@ List tri_barycentric_cpp(
     const NumericMatrix& coords,
     const double s,
     const NumericVector& origin,
-    const double tol = 1e-10
+    const double tol = 1e-10,
+    const int n_threads = 0
 ) {
     const int n = coords.nrow();
     const double sqrt3 = std::sqrt(3.0);
@@ -31,6 +48,14 @@ List tri_barycentric_cpp(
     if (!R_finite(tol) || tol < 0.0) {
         stop("tol must be a non-negative finite number.");
     }
+    if (n_threads < 0) {
+        stop("n_threads must be NULL or a positive integer.");
+    }
+    for (int row = 0; row < n; ++row) {
+        if (!R_finite(coords(row, 0)) || !R_finite(coords(row, 1))) {
+            stop("coords contains non-finite values.");
+        }
+    }
 
     NumericMatrix weights(n, 3);
     NumericVector points(static_cast<R_xlen_t>(n) * 3 * 2);
@@ -39,13 +64,14 @@ List tri_barycentric_cpp(
     points.attr("dim") = IntegerVector::create(n, 3, 2);
     lattice.attr("dim") = IntegerVector::create(n, 3, 2);
 
+    const int actual_threads = resolve_threads(n_threads);
+
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(actual_threads)
+#endif
     for (int row = 0; row < n; ++row) {
         const double x = coords(row, 0) - origin[0];
         const double y = coords(row, 1) - origin[1];
-
-        if (!R_finite(x) || !R_finite(y)) {
-            stop("coords contains non-finite values.");
-        }
 
         const double v = 2.0 * y / (sqrt3 * s);
         const double u = x / s - 0.5 * v;
