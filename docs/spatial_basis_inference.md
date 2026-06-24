@@ -445,3 +445,27 @@ Natural next extensions include:
 - minibatch Adam for very large datasets, followed by L-BFGS-B polishing
 - explicit background/noise components
 - priors or penalties that encourage sparse cell-type occupancy per basis point
+- multithreading and eventually GPU acceleration
+
+Other open questions and directions:
+
+- Can we go beyond discrete cell type signatures to a more continuous view of cell state?
+  - Either with probabilistic cell embeddings or logistic normal models of expression within each cell type?
+  - If learned from the data, how do we avoid learning segmentation contamination initially and getting stuck without improving cell type purity?
+  - Could these methods plug into expanding cell atlas foundation models?
+- What is the best way to reliably / automatically initialize the cell type signatures?
+  - Can you support finer cell states, or will that lead to over-splitting of individual cells due to ambiguity? Would appropriate spatial regularization prevent this?
+  - How can we deal with noise / spatial contamination in the initial cell type signatures? We want to avoid getting stuck at a signature (even after refinement) that includes this contamination
+  - Subcellular compartmentalization: Are nuclear transcripts leading to over-segmentation of some cells? Would it be worth defining a separate nuclear signature that can be added to other cell type signatures?
+- What is the best way to choose the mesh size and the regularization? Is there sufficient sharing of information across basis points to allow for small mesh sizes?
+  - Why were the myeloid cells being called B/plasma/pDC in some runs with small 3D mesh size? Would different cell type signatures help?
+  - How are we controlling the rate of change / diffusion allowed at boundaries?
+- How do we go from cell types to individual cells?
+  - One proposal: HDBSCAN-style partitioning of transcripts based on density / transcript NN-graph, only allowing contacts to the same cell type (how would this be done with continuous embeddings rather than discrete signatures?)
+  - Could try to cut so that the cell counts match the number when running Cellpose with low filtering and some post-QC
+- Can we build similar multiscale models?
+  - From subcellular up to full tissues
+
+Datasets of interest:
+
+- 3D spatial transcriptomics segmentation
