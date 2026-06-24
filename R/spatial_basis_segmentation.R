@@ -75,9 +75,9 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
 #' observed transcript gene then contributes the cell-type signature likelihood.
 #'
 #' This first implementation performs MAP estimation with fixed signatures and
-#' quadratic smoothing between neighboring lattice basis points. The final
-#' transcript posterior is proportional to the fitted spatial prior multiplied
-#' by the corresponding gene signature probability.
+#' smoothing between neighboring lattice basis points. The final transcript
+#' posterior is proportional to the fitted spatial prior multiplied by the
+#' corresponding gene signature probability.
 #'
 #' @param transcripts_df A data frame containing transcript-level data.
 #' @param cell_signatures A numeric matrix with genes in rows and cell types in
@@ -97,8 +97,16 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
 #' @param qv_threshold Numeric; minimum quality value to retain transcripts.
 #' @param origin Numeric lattice origin. Defaults to zeros with length matching
 #'   the selected basis dimension.
-#' @param lambda Non-negative quadratic smoothing strength between neighboring
-#'   basis coefficients.
+#' @param lambda Non-negative smoothing strength between neighboring basis
+#'   coefficients.
+#' @param regularization Character; one of `"quadratic"`, `"huber"`, or
+#'   `"bounded"`. Quadratic smoothing penalizes squared logit differences,
+#'   Huber smoothing is quadratic near zero and linear past `delta`, and
+#'   bounded smoothing uses `1 - exp(-d^2 / (2 * sigma^2))`.
+#' @param delta Positive Huber transition scale in logit units. Used only when
+#'   `regularization = "huber"`.
+#' @param sigma Positive bounded-penalty saturation scale in logit units. Used
+#'   only when `regularization = "bounded"`.
 #' @param signature_floor Positive floor applied to signatures before
 #'   log-transforming.
 #' @param normalize_signatures Logical; if `TRUE`, normalize each cell-type
@@ -150,6 +158,9 @@ spatial_basis_segmentation <- function(
     qv_threshold = 20,
     origin = NULL,
     lambda = 1,
+    regularization = c("quadratic", "huber", "bounded"),
+    delta = 1,
+    sigma = 1,
     signature_floor = 1e-12,
     normalize_signatures = TRUE,
     maxit = 100L,
@@ -157,6 +168,7 @@ spatial_basis_segmentation <- function(
     show_progress = TRUE
 ) {
     basis = match.arg(basis)
+    regularization = match.arg(regularization)
     d = if (basis == "tri") 2L else 3L
 
     if (is.null(origin)) {
@@ -167,6 +179,12 @@ spatial_basis_segmentation <- function(
     }
     if (length(lambda) != 1L || !is.finite(lambda) || lambda < 0) {
         stop("lambda must be a non-negative finite number.")
+    }
+    if (length(delta) != 1L || !is.finite(delta) || delta <= 0) {
+        stop("delta must be a positive finite number.")
+    }
+    if (length(sigma) != 1L || !is.finite(sigma) || sigma <= 0) {
+        stop("sigma must be a positive finite number.")
     }
     if (length(signature_floor) != 1L || !is.finite(signature_floor) || signature_floor <= 0) {
         stop("signature_floor must be a positive finite number.")
@@ -239,6 +257,7 @@ spatial_basis_segmentation <- function(
     basis_id0 = design$basis_id - 1L
     edge_from0 = as.integer(basis_edges[, "from"] - 1L)
     edge_to0 = as.integer(basis_edges[, "to"] - 1L)
+    regularization_id = match(regularization, c("quadratic", "huber", "bounded")) - 1L
 
     objective = function(par) {
         spatial_basis_objective_cpp(
@@ -250,6 +269,9 @@ spatial_basis_segmentation <- function(
             edge_from = edge_from0,
             edge_to = edge_to0,
             lambda = lambda,
+            regularization = regularization_id,
+            delta = delta,
+            sigma = sigma,
             n_basis = M,
             n_cell_types = K
         )
@@ -268,6 +290,13 @@ spatial_basis_segmentation <- function(
             factr = reltol / .Machine$double.eps
         )
     )
+    if (opt$convergence != 0) {
+        warning(
+            "Optimization did not converge: ",
+            opt$message,
+            call. = FALSE
+        )
+    }
 
     pred = spatial_basis_predict_cpp(
         par = opt$par,

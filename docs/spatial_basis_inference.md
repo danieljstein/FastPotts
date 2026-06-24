@@ -263,32 +263,70 @@ $$
 R(W).
 $$
 
-## Quadratic Spatial Smoothing
+## Spatial Smoothing
 
-The current regularizer is quadratic smoothing over neighboring lattice basis
-points:
+The regularizer smooths neighboring lattice basis points:
 
 ```text
-R(W) = (lambda / 2) * sum_(m,n in E) sum_k (w[k, m] - w[k, n])^2
+R(W) = lambda * sum_(m,n in E) sum_k rho(w[k, m] - w[k, n])
 ```
 
 where `E` is the lattice neighbor graph and `lambda >= 0` controls smoothing.
+The implementation supports three choices for `rho`.
 
-In math:
+### Quadratic
+
+The default is quadratic smoothing:
 
 $$
 R(W)
 =
-\frac{\lambda}{2}
+\lambda
 \sum_{(m,n)\in E}
 \sum_{k=1}^{K-1}
+\frac{1}{2}
 \left(
 w_{km} - w_{kn}
 \right)^2.
 $$
 
+This is diffusive and strongly penalizes large jumps.
+
+### Huber
+
+Huber smoothing is quadratic for small logit differences and linear for larger
+differences:
+
+$$
+\rho_\delta(r)
+=
+\begin{cases}
+\frac{1}{2}r^2, & |r| \le \delta, \\
+\delta \left(|r| - \frac{1}{2}\delta\right), & |r| > \delta.
+\end{cases}
+$$
+
+The transition scale `delta` is measured in logit units. The default
+`delta = 1` treats differences below roughly one logit unit as smooth variation
+and larger differences more like boundaries.
+
+### Bounded
+
+The bounded option is a Potts-like smooth approximation:
+
+$$
+\rho_\sigma(r)
+=
+1 - \exp\left(-\frac{r^2}{2\sigma^2}\right).
+$$
+
+The saturation scale `sigma` is measured in logit units. The default
+`sigma = 1` allows the smoothing force to decay quickly once neighboring
+basis coefficients differ by one or more logit units.
+
 The sum is over $K-1$ optimized classes because the final class is the
-reference class with $w_{Km}=0$.
+reference class with $w_{Km}=0$. These penalties are currently applied
+component-wise to each optimized cell-type logit.
 
 For the 2D triangular lattice, neighbors are the six adjacent triangular
 lattice points, represented by three undirected offset directions:
@@ -398,6 +436,26 @@ w_{km} - w_{kn}
 $$
 
 The C++ backend computes the objective and analytic gradient together.
+
+For Huber smoothing, the derivative of the scalar penalty is:
+
+$$
+\rho_\delta'(r)
+=
+\begin{cases}
+r, & |r| \le \delta, \\
+\delta \operatorname{sign}(r), & |r| > \delta.
+\end{cases}
+$$
+
+For bounded smoothing, the derivative is:
+
+$$
+\rho_\sigma'(r)
+=
+\exp\left(-\frac{r^2}{2\sigma^2}\right)
+\frac{r}{\sigma^2}.
+$$
 
 ## Optimization
 

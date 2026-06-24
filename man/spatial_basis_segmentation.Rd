@@ -18,6 +18,9 @@ spatial_basis_segmentation(
   qv_threshold = 20,
   origin = NULL,
   lambda = 1,
+  regularization = c("quadratic", "huber", "bounded"),
+  delta = 1,
+  sigma = 1,
   signature_floor = 1e-12,
   normalize_signatures = TRUE,
   maxit = 100L,
@@ -56,8 +59,19 @@ be treated as a gene. If absent, no gene-only filtering is applied.}
 \item{origin}{Numeric lattice origin. Defaults to zeros with length matching
 the selected basis dimension.}
 
-\item{lambda}{Non-negative quadratic smoothing strength between neighboring
-basis coefficients.}
+\item{lambda}{Non-negative smoothing strength between neighboring basis
+coefficients.}
+
+\item{regularization}{Character; one of \code{"quadratic"}, \code{"huber"}, or
+\code{"bounded"}. Quadratic smoothing penalizes squared logit differences,
+Huber smoothing is quadratic near zero and linear past \code{delta}, and
+bounded smoothing uses \code{1 - exp(-d^2 / (2 * sigma^2))}.}
+
+\item{delta}{Positive Huber transition scale in logit units. Used only when
+\code{regularization = "huber"}.}
+
+\item{sigma}{Positive bounded-penalty saturation scale in logit units. Used
+only when \code{regularization = "bounded"}.}
 
 \item{signature_floor}{Positive floor applied to signatures before
 log-transforming.}
@@ -98,9 +112,9 @@ observed transcript gene then contributes the cell-type signature likelihood.
 }
 \details{
 This first implementation performs MAP estimation with fixed signatures and
-quadratic smoothing between neighboring lattice basis points. The final
-transcript posterior is proportional to the fitted spatial prior multiplied
-by the corresponding gene signature probability.
+smoothing between neighboring lattice basis points. The final transcript
+posterior is proportional to the fitted spatial prior multiplied by the
+corresponding gene signature probability.
 }
 \examples{
 \dontrun{

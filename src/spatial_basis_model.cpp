@@ -30,6 +30,9 @@ List spatial_basis_objective_cpp(
     const IntegerVector& edge_from,
     const IntegerVector& edge_to,
     const double lambda,
+    const int regularization,
+    const double delta,
+    const double sigma,
     const int n_basis,
     const int n_cell_types
 ) {
@@ -52,6 +55,15 @@ List spatial_basis_objective_cpp(
     }
     if (edge_to.size() != n_edges) {
         stop("edge_from and edge_to must have the same length.");
+    }
+    if (regularization < 0 || regularization > 2) {
+        stop("regularization must be 0, 1, or 2.");
+    }
+    if (!R_finite(delta) || delta <= 0.0) {
+        stop("delta must be a positive finite number.");
+    }
+    if (!R_finite(sigma) || sigma <= 0.0) {
+        stop("sigma must be a positive finite number.");
     }
 
     NumericVector grad(par.size());
@@ -123,9 +135,33 @@ List spatial_basis_objective_cpp(
                 const int idx2 = m2 + n_basis * k;
                 const double diff = par[idx1] - par[idx2];
 
-                objective += 0.5 * lambda * diff * diff;
-                grad[idx1] += lambda * diff;
-                grad[idx2] -= lambda * diff;
+                double penalty = 0.0;
+                double derivative = 0.0;
+
+                if (regularization == 0) {
+                    penalty = 0.5 * diff * diff;
+                    derivative = diff;
+                } else if (regularization == 1) {
+                    const double abs_diff = std::abs(diff);
+
+                    if (abs_diff <= delta) {
+                        penalty = 0.5 * diff * diff;
+                        derivative = diff;
+                    } else {
+                        penalty = delta * (abs_diff - 0.5 * delta);
+                        derivative = delta * ((diff >= 0.0) ? 1.0 : -1.0);
+                    }
+                } else {
+                    const double scaled = diff / sigma;
+                    const double attenuation = std::exp(-0.5 * scaled * scaled);
+
+                    penalty = 1.0 - attenuation;
+                    derivative = attenuation * diff / (sigma * sigma);
+                }
+
+                objective += lambda * penalty;
+                grad[idx1] += lambda * derivative;
+                grad[idx2] -= lambda * derivative;
             }
         }
     }
