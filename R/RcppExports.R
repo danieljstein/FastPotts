@@ -290,6 +290,14 @@ potts_lbp_parallel_cpp <- function(adj_ptr, adj_idx, rev_idx, edge_weights, node
     .Call(`_FastPotts_potts_lbp_parallel_cpp`, adj_ptr, adj_idx, rev_idx, edge_weights, node_potential, max_iter, damping, tol, n_threads, verbose)
 }
 
+spatial_basis_objective_cpp <- function(par, basis_id, basis_weight, gene_index, log_signature, edge_from, edge_to, lambda, n_basis, n_cell_types) {
+    .Call(`_FastPotts_spatial_basis_objective_cpp`, par, basis_id, basis_weight, gene_index, log_signature, edge_from, edge_to, lambda, n_basis, n_cell_types)
+}
+
+spatial_basis_predict_cpp <- function(par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_cell_types) {
+    .Call(`_FastPotts_spatial_basis_predict_cpp`, par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_cell_types)
+}
+
 tri_barycentric_cpp <- function(coords, s, origin, tol = 1e-10) {
     .Call(`_FastPotts_tri_barycentric_cpp`, coords, s, origin, tol)
 }
