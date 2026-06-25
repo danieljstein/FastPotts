@@ -249,6 +249,62 @@ $$
 
 These posterior probabilities are returned as `marginals`.
 
+## Optional Signature Refinement
+
+The reference signatures can optionally be updated from the current posterior
+assignments. This is disabled by default because the reference signatures are
+often the main anchor preventing neighboring or abundant cell types from
+absorbing rare ones.
+
+Let $c_{gk}$ be the posterior-weighted transcript count for gene $g$ and cell
+type $k$:
+
+$$
+c_{gk} = \sum_{i:g_i=g} q_{ik}.
+$$
+
+For each cell type, the update uses a Dirichlet posterior mean anchored to the
+input reference signature $\theta^{(0)}_{\cdot k}$:
+
+$$
+\tilde{\theta}_{gk}
+=
+\frac{c_{gk} + \alpha \theta^{(0)}_{gk}}
+{\sum_{g'} c_{g'k} + \alpha}.
+$$
+
+The prior strength $\alpha$ is controlled by `signature_prior_strength`. If it
+is `NULL`, the default is $\alpha = G$, the number of genes, so the reference
+contributes approximately one pseudo-transcript per gene. This is conservative:
+large cell-type-specific transcript counts can move the signature, but weak or
+rare assignments remain close to the reference.
+
+The update is damped before refitting the spatial field:
+
+$$
+\theta^{(t+1)}_{\cdot k}
+=
+(1-\rho)\theta^{(t)}_{\cdot k}
++
+\rho\tilde{\theta}_{\cdot k},
+$$
+
+where $\rho$ is `signature_update_rate`. The default is $\rho = 0.25$, meaning
+each update moves one quarter of the way toward the current posterior estimate.
+After the update, columns are floored and normalized.
+
+The alternating algorithm is:
+
+1. Fit the spatial field with the current signatures.
+2. Compute posterior transcript assignments.
+3. Update signatures from posterior-weighted gene counts.
+4. Warm-start another spatial field fit from the previous basis weights.
+
+This repeats `signature_update_iters` times when `refine_signatures = TRUE`.
+The returned object includes `cell_signatures_initial`, final
+`cell_signatures`, `signature_history`, `signature_update_history`, and
+`optim_history`.
+
 ## MAP Objective
 
 The implemented estimator minimizes the negative log posterior:
@@ -581,12 +637,18 @@ This is a good default for the current model because:
 - `basis_edges`: neighboring basis point graph
 - `transcripts_df`: filtered transcript data with MAP labels
 - `optim`: the optimizer result
+- `optim_history`: optimizer results from each spatial field fit
+- `cell_signatures_initial`: input signatures after filtering and normalization
+- `cell_signatures`: final signatures used for the returned posterior
+- `signature_history`: signatures after each refinement step
+- `signature_update_history`: effective counts and max change per update
 
 ## Current Limitations
 
 The current implementation is intentionally a first MAP estimator:
 
-- Signatures are fixed during inference.
+- Signature refinement is optional and conservative; poor initial signatures
+  can still bias the posterior updates.
 - Quadratic regularization encourages smooth fields and may blur sharp cell
   boundaries. Huber and bounded regularization are available to reduce this,
   but introduce additional logit-scale parameters.
@@ -596,11 +658,10 @@ The current implementation is intentionally a first MAP estimator:
 Natural next extensions include:
 
 - robust or total-variation-like smoothing to preserve sharper boundaries
-- iterative refinement of signatures
 - minibatch Adam for very large datasets, followed by L-BFGS-B polishing
 - explicit background/noise components
 - priors or penalties that encourage sparse cell-type occupancy per basis point
-- multithreading and eventually GPU acceleration
+- GPU acceleration
 
 Other open questions and directions:
 

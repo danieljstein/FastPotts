@@ -65,6 +65,93 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
     cbind(from = from[keep], to = to[keep])
 }
 
+update_signatures_from_posteriors <- function(
+    gene_index,
+    posterior,
+    reference_signatures,
+    current_signatures,
+    prior_strength,
+    update_rate,
+    min_posterior,
+    signature_floor
+) {
+    G = nrow(reference_signatures)
+    K = ncol(reference_signatures)
+    weights = posterior
+
+    if (min_posterior > 0) {
+        weights[weights < min_posterior] = 0
+    }
+
+    counts = matrix(0, nrow = G, ncol = K)
+    for (k in seq_len(K)) {
+        grouped = rowsum(weights[, k], group = gene_index, reorder = FALSE)
+        counts[as.integer(rownames(grouped)), k] = grouped[, 1]
+    }
+
+    posterior_mean = sweep(
+        counts + prior_strength * reference_signatures,
+        2,
+        colSums(counts) + prior_strength,
+        "/"
+    )
+    updated = (1 - update_rate) * current_signatures + update_rate * posterior_mean
+    updated = pmax(updated, signature_floor)
+    updated = sweep(updated, 2, colSums(updated), "/")
+    dimnames(updated) = dimnames(reference_signatures)
+
+    list(
+        signatures = updated,
+        effective_counts = colSums(weights),
+        max_abs_change = apply(abs(updated - current_signatures), 2, max),
+        posterior_mean = posterior_mean
+    )
+}
+
+warn_spatial_basis_optim_status <- function(opt, maxit) {
+    if (is.null(opt$convergence) || opt$convergence == 0L) {
+        return(invisible(NULL))
+    }
+
+    if (opt$convergence == 1L) {
+        warning(
+            "Optimization reached maxit = ",
+            as.integer(maxit),
+            " before satisfying the L-BFGS-B convergence criterion. ",
+            "The returned fit is the best iterate found; consider increasing maxit ",
+            "or checking fit$optim$convergence and fit$optim$value.",
+            call. = FALSE
+        )
+        return(invisible(NULL))
+    }
+
+    if (opt$convergence == 51L) {
+        warning(
+            "L-BFGS-B reported a warning",
+            if (!is.null(opt$message) && nzchar(opt$message)) paste0(": ", opt$message) else ".",
+            call. = FALSE
+        )
+        return(invisible(NULL))
+    }
+
+    if (opt$convergence == 52L) {
+        warning(
+            "L-BFGS-B reported an error",
+            if (!is.null(opt$message) && nzchar(opt$message)) paste0(": ", opt$message) else ".",
+            call. = FALSE
+        )
+        return(invisible(NULL))
+    }
+
+    warning(
+        "Optimization did not converge; optim() returned convergence code ",
+        opt$convergence,
+        if (!is.null(opt$message) && nzchar(opt$message)) paste0(" with message: ", opt$message) else ".",
+        call. = FALSE
+    )
+    invisible(NULL)
+}
+
 #' Segment transcripts with a continuous spatial basis model
 #'
 #' Fits a continuous spatial cell-type field on either a 2D triangular lattice
@@ -74,10 +161,10 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
 #' from nearby lattice basis coefficients using barycentric weights. The
 #' observed transcript gene then contributes the cell-type signature likelihood.
 #'
-#' This first implementation performs MAP estimation with fixed signatures and
-#' smoothing between neighboring lattice basis points. The final transcript
-#' posterior is proportional to the fitted spatial prior multiplied by the
-#' corresponding gene signature probability.
+#' This implementation performs MAP estimation of the spatial field with
+#' optional conservative refinement of the cell-type signatures. The final
+#' transcript posterior is proportional to the fitted spatial prior multiplied
+#' by the corresponding gene signature probability.
 #'
 #' @param transcripts_df A data frame containing transcript-level data.
 #' @param cell_signatures A numeric matrix with genes in rows and cell types in
@@ -118,6 +205,19 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
 #'   log-transforming.
 #' @param normalize_signatures Logical; if `TRUE`, normalize each cell-type
 #'   signature column after applying `signature_floor`.
+#' @param refine_signatures Logical; if `TRUE`, alternates spatial field
+#'   fitting with conservative cell-type signature updates from posterior
+#'   transcript assignments.
+#' @param signature_update_iters Integer number of signature update steps. Each
+#'   update is followed by a refit of the spatial field.
+#' @param signature_prior_strength Non-negative Dirichlet pseudo-count strength
+#'   for anchoring each refined signature to the input reference signature. If
+#'   `NULL`, defaults to the number of genes in `cell_signatures`.
+#' @param signature_update_rate Numeric in `[0, 1]`; damping rate for each
+#'   signature update.
+#' @param signature_min_posterior Numeric in `[0, 1]`; if positive, only
+#'   posterior assignment weights at least this large contribute to signature
+#'   soft counts.
 #' @param maxit Integer maximum number of L-BFGS iterations.
 #' @param reltol Approximate relative convergence tolerance. For the
 #'   `"L-BFGS-B"` optimizer this is converted to `factr = reltol /
@@ -139,6 +239,12 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
 #'   \item{basis_edges}{Two-column matrix of neighboring basis point indices.}
 #'   \item{transcripts_df}{Filtered input data with added `label` column.}
 #'   \item{optim}{The [stats::optim()] result.}
+#'   \item{optim_history}{List of optimizer results, one per spatial field fit.}
+#'   \item{cell_signatures_initial}{Input signatures after filtering,
+#'     flooring, and optional normalization.}
+#'   \item{cell_signatures}{Final signatures used for the returned posterior.}
+#'   \item{signature_history}{List of signatures after each refinement step.}
+#'   \item{signature_update_history}{List of per-update diagnostics.}
 #' }
 #'
 #' @examples
@@ -174,6 +280,11 @@ spatial_basis_segmentation <- function(
     purity_lambda = 0,
     signature_floor = 1e-12,
     normalize_signatures = TRUE,
+    refine_signatures = FALSE,
+    signature_update_iters = 1L,
+    signature_prior_strength = NULL,
+    signature_update_rate = 0.25,
+    signature_min_posterior = 0,
     maxit = 100L,
     reltol = 1e-6,
     n_threads = NULL,
@@ -204,6 +315,24 @@ spatial_basis_segmentation <- function(
     }
     if (length(signature_floor) != 1L || !is.finite(signature_floor) || signature_floor <= 0) {
         stop("signature_floor must be a positive finite number.")
+    }
+    if (!is.logical(refine_signatures) || length(refine_signatures) != 1L || is.na(refine_signatures)) {
+        stop("refine_signatures must be TRUE or FALSE.")
+    }
+    if (
+        length(signature_update_iters) != 1L ||
+        !is.finite(signature_update_iters) ||
+        signature_update_iters < 0 ||
+        signature_update_iters != as.integer(signature_update_iters)
+    ) {
+        stop("signature_update_iters must be a non-negative integer.")
+    }
+    signature_update_iters = as.integer(signature_update_iters)
+    if (length(signature_update_rate) != 1L || !is.finite(signature_update_rate) || signature_update_rate < 0 || signature_update_rate > 1) {
+        stop("signature_update_rate must be a finite number in [0, 1].")
+    }
+    if (length(signature_min_posterior) != 1L || !is.finite(signature_min_posterior) || signature_min_posterior < 0 || signature_min_posterior > 1) {
+        stop("signature_min_posterior must be a finite number in [0, 1].")
     }
     if (is.null(n_threads)) {
         n_threads = 0L
@@ -255,7 +384,12 @@ spatial_basis_segmentation <- function(
     if (isTRUE(normalize_signatures)) {
         signatures = sweep(signatures, 2, colSums(signatures), "/")
     }
-    log_signature = log(signatures)
+    reference_signatures = signatures
+    if (is.null(signature_prior_strength)) {
+        signature_prior_strength = nrow(signatures)
+    } else if (length(signature_prior_strength) != 1L || !is.finite(signature_prior_strength) || signature_prior_strength < 0) {
+        stop("signature_prior_strength must be NULL or a non-negative finite number.")
+    }
 
     coord_cols = if (basis == "tri") c(x, y) else c(x, y, z)
     coords = as.matrix(df[, coord_cols, drop = FALSE])
@@ -289,69 +423,103 @@ spatial_basis_segmentation <- function(
     regularization_id = match(regularization, c("quadratic", "huber", "bounded")) - 1L
     purity_id = match(purity, c("none", "entropy", "gini")) - 1L
 
-    objective = function(par) {
-        spatial_basis_objective_cpp(
-            par = par,
+    fit_spatial_field = function(par_start, current_signatures, fit_iter) {
+        log_signature = log(current_signatures)
+        objective = function(par) {
+            spatial_basis_objective_cpp(
+                par = par,
+                basis_id = basis_id0,
+                basis_weight = design$basis_weight,
+                gene_index = as.integer(gene_index - 1L),
+                log_signature = log_signature,
+                edge_from = edge_from0,
+                edge_to = edge_to0,
+                lambda = lambda,
+                regularization = regularization_id,
+                delta = delta,
+                sigma = sigma,
+                purity = purity_id,
+                purity_lambda = purity_lambda,
+                n_threads = n_threads,
+                n_basis = M,
+                n_cell_types = K
+            )
+        }
+
+        if (show_progress) {
+            message("Optimizing continuous spatial field", if (fit_iter > 1L) paste0(" (fit ", fit_iter, ")") else "", "...")
+        }
+        opt = stats::optim(
+            par = par_start,
+            fn = function(par) objective(par)$value,
+            gr = function(par) objective(par)$gradient,
+            method = "L-BFGS-B",
+            control = list(
+                maxit = as.integer(maxit),
+                factr = reltol / .Machine$double.eps
+            )
+        )
+        warn_spatial_basis_optim_status(opt, maxit)
+
+        pred = spatial_basis_predict_cpp(
+            par = opt$par,
             basis_id = basis_id0,
             basis_weight = design$basis_weight,
             gene_index = as.integer(gene_index - 1L),
             log_signature = log_signature,
-            edge_from = edge_from0,
-            edge_to = edge_to0,
-            lambda = lambda,
-            regularization = regularization_id,
-            delta = delta,
-            sigma = sigma,
-            purity = purity_id,
-            purity_lambda = purity_lambda,
-            n_threads = n_threads,
             n_basis = M,
+            n_threads = n_threads,
             n_cell_types = K
         )
+
+        list(opt = opt, pred = pred)
     }
 
-    if (show_progress) {
-        message("Optimizing continuous spatial field...")
-    }
-    opt = stats::optim(
-        par = par0,
-        fn = function(par) objective(par)$value,
-        gr = function(par) objective(par)$gradient,
-        method = "L-BFGS-B",
-        control = list(
-            maxit = as.integer(maxit),
-            factr = reltol / .Machine$double.eps
-        )
-    )
-    if (opt$convergence != 0) {
-        warning(
-            "Optimization did not converge: ",
-            opt$message,
-            call. = FALSE
-        )
+    n_updates = if (isTRUE(refine_signatures)) signature_update_iters else 0L
+    n_fits = n_updates + 1L
+    current_signatures = signatures
+    par_start = par0
+    signature_history = list(current_signatures)
+    optim_history = vector("list", n_fits)
+    signature_update_history = vector("list", n_updates)
+
+    for (fit_iter in seq_len(n_fits)) {
+        fit = fit_spatial_field(par_start, current_signatures, fit_iter)
+        opt = fit$opt
+        pred = fit$pred
+        optim_history[[fit_iter]] = opt
+
+        if (fit_iter <= n_updates) {
+            if (show_progress) {
+                message("Updating cell type signatures...")
+            }
+            update = update_signatures_from_posteriors(
+                gene_index = gene_index,
+                posterior = pred$posterior,
+                reference_signatures = reference_signatures,
+                current_signatures = current_signatures,
+                prior_strength = signature_prior_strength,
+                update_rate = signature_update_rate,
+                min_posterior = signature_min_posterior,
+                signature_floor = signature_floor
+            )
+            current_signatures = update$signatures
+            signature_history[[fit_iter + 1L]] = current_signatures
+            signature_update_history[[fit_iter]] = update[c("effective_counts", "max_abs_change")]
+            par_start = opt$par
+        }
     }
 
-    pred = spatial_basis_predict_cpp(
-        par = opt$par,
-        basis_id = basis_id0,
-        basis_weight = design$basis_weight,
-        gene_index = as.integer(gene_index - 1L),
-        log_signature = log_signature,
-        n_basis = M,
-        n_threads = n_threads,
-        n_cell_types = K
-    )
-
-    colnames(pred$posterior) = colnames(signatures)
-    colnames(pred$prior) = colnames(signatures)
-    colnames(pred$logits) = colnames(signatures)
+    colnames(pred$posterior) = colnames(current_signatures)
+    colnames(pred$prior) = colnames(current_signatures)
+    colnames(pred$logits) = colnames(current_signatures)
 
     basis_weights = matrix(0, nrow = M, ncol = K)
     basis_weights[, seq_len(K - 1L)] = matrix(opt$par, nrow = M, ncol = K - 1L)
-    colnames(basis_weights) = colnames(signatures)
+    colnames(basis_weights) = colnames(current_signatures)
 
     labels = max.col(pred$posterior, ties.method = "first")
-    df$label = factor(colnames(signatures)[labels], levels = colnames(signatures))
+    df$label = factor(colnames(current_signatures)[labels], levels = colnames(current_signatures))
 
     list(
         marginals = pred$posterior,
@@ -362,6 +530,11 @@ spatial_basis_segmentation <- function(
         basis_lattice = design$basis_lattice,
         basis_edges = basis_edges,
         transcripts_df = df,
-        optim = opt
+        optim = opt,
+        optim_history = optim_history,
+        cell_signatures_initial = reference_signatures,
+        cell_signatures = current_signatures,
+        signature_history = signature_history,
+        signature_update_history = signature_update_history
     )
 }

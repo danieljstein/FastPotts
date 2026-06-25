@@ -25,6 +25,11 @@ spatial_basis_segmentation(
   purity_lambda = 0,
   signature_floor = 1e-12,
   normalize_signatures = TRUE,
+  refine_signatures = FALSE,
+  signature_update_iters = 1L,
+  signature_prior_strength = NULL,
+  signature_update_rate = 0.25,
+  signature_min_posterior = 0,
   maxit = 100L,
   reltol = 1e-06,
   n_threads = NULL,
@@ -91,6 +96,24 @@ log-transforming.}
 \item{normalize_signatures}{Logical; if \code{TRUE}, normalize each cell-type
 signature column after applying \code{signature_floor}.}
 
+\item{refine_signatures}{Logical; if \code{TRUE}, alternates spatial field
+fitting with conservative cell-type signature updates from posterior
+transcript assignments.}
+
+\item{signature_update_iters}{Integer number of signature update steps. Each
+update is followed by a refit of the spatial field.}
+
+\item{signature_prior_strength}{Non-negative Dirichlet pseudo-count strength
+for anchoring each refined signature to the input reference signature. If
+\code{NULL}, defaults to the number of genes in \code{cell_signatures}.}
+
+\item{signature_update_rate}{Numeric in \verb{[0, 1]}; damping rate for each
+signature update.}
+
+\item{signature_min_posterior}{Numeric in \verb{[0, 1]}; if positive, only
+posterior assignment weights at least this large contribute to signature
+soft counts.}
+
 \item{maxit}{Integer maximum number of L-BFGS iterations.}
 
 \item{reltol}{Approximate relative convergence tolerance. For the
@@ -115,6 +138,12 @@ the reference class with coefficient zero.}
 \item{basis_edges}{Two-column matrix of neighboring basis point indices.}
 \item{transcripts_df}{Filtered input data with added \code{label} column.}
 \item{optim}{The \code{\link[stats:optim]{stats::optim()}} result.}
+\item{optim_history}{List of optimizer results, one per spatial field fit.}
+\item{cell_signatures_initial}{Input signatures after filtering,
+flooring, and optional normalization.}
+\item{cell_signatures}{Final signatures used for the returned posterior.}
+\item{signature_history}{List of signatures after each refinement step.}
+\item{signature_update_history}{List of per-update diagnostics.}
 }
 }
 \description{
@@ -126,10 +155,10 @@ from nearby lattice basis coefficients using barycentric weights. The
 observed transcript gene then contributes the cell-type signature likelihood.
 }
 \details{
-This first implementation performs MAP estimation with fixed signatures and
-smoothing between neighboring lattice basis points. The final transcript
-posterior is proportional to the fitted spatial prior multiplied by the
-corresponding gene signature probability.
+This implementation performs MAP estimation of the spatial field with
+optional conservative refinement of the cell-type signatures. The final
+transcript posterior is proportional to the fitted spatial prior multiplied
+by the corresponding gene signature probability.
 }
 \examples{
 \dontrun{
