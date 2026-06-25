@@ -30,8 +30,12 @@ where $z_i \in \{1,\dots,K\}$ is the latent cell type of transcript $i$.
 
 The spatial domain is represented by a lattice basis:
 
-- `basis = "tri"`: 2D triangular lattice
-- `basis = "bcc"`: 3D body-centered cubic lattice
+- `basis = "2d"`: 2D triangular lattice
+- `basis = "3d"`: 3D body-centered cubic lattice
+
+The older values `basis = "tri"` and `basis = "bcc"` are accepted as aliases,
+but the public API documents the dimensional names because they are clearer for
+segmentation users.
 
 The user-facing mesh size `s` is defined as the long Delaunay-cell edge scale:
 
@@ -310,20 +314,24 @@ The returned object includes `cell_signatures_initial`, final
 The implemented estimator minimizes the negative log posterior:
 
 ```text
-L(W) = - sum_i log P(g_i | x_i, W, theta) + R(W)
+L(W) = mean_i[-log P(g_i | x_i, W, theta)] + R(W)
 ```
 
-where the first term is the negative transcript log likelihood.
+where the first term is the mean negative transcript log likelihood over the
+$N$ retained transcripts.
 
 More explicitly:
 
 $$
 \mathcal L(W)
 =
--\sum_i
-\log
+\frac{1}{N}
+\sum_i
+\left[
+-\log
 \left[
 \sum_{k=1}^K \theta_{g_i k} p_{ik}
+\right]
 \right]
 +
 R(W).
@@ -334,11 +342,17 @@ $$
 The regularizer smooths neighboring lattice basis points:
 
 ```text
-R(W) = lambda * sum_(m,n in E) sum_k rho(w[k, m] - w[k, n])
+R(W) = lambda * mean_edges sum_k rho((w[k, m] - w[k, n]) / d[m, n])
 ```
 
-where `E` is the lattice neighbor graph and `lambda >= 0` controls smoothing.
-The implementation supports three choices for `rho`.
+where `E` is the lattice neighbor graph, $d_{mn}$ is the physical distance
+between neighboring basis points, and `lambda >= 0` controls smoothing. The
+implementation supports three choices for `rho`.
+
+This convention makes `lambda` a per-transcript, per-edge spatial-slope
+penalty. For the BCC basis, axis edges have distance $s$ and center-to-corner
+edges have distance $\sqrt{3}s/2$; for the triangular basis, all neighbor edges
+have distance $s$.
 
 ### Quadratic
 
@@ -347,21 +361,21 @@ The default is quadratic smoothing:
 $$
 R(W)
 =
-\lambda
+\frac{\lambda}{|E|}
 \sum_{(m,n)\in E}
 \sum_{k=1}^{K-1}
 \frac{1}{2}
 \left(
-w_{km} - w_{kn}
+\frac{w_{km} - w_{kn}}{d_{mn}}
 \right)^2.
 $$
 
-This is diffusive and strongly penalizes large jumps.
+This is diffusive and strongly penalizes large spatial slopes.
 
 ### Huber
 
-Huber smoothing is quadratic for small logit differences and linear for larger
-differences:
+Huber smoothing is quadratic for small spatial logit slopes and linear for
+larger slopes:
 
 $$
 \rho_\delta(r)
@@ -372,9 +386,9 @@ $$
 \end{cases}
 $$
 
-The transition scale `delta` is measured in logit units. The default
-`delta = 1` treats differences below roughly one logit unit as smooth variation
-and larger differences more like boundaries.
+The transition scale `delta` is measured in logit units per spatial unit. The
+default `delta = 1` treats slopes below roughly one logit unit per spatial unit
+as smooth variation and larger slopes more like boundaries.
 
 ### Bounded
 
@@ -383,12 +397,16 @@ The bounded option is a Potts-like smooth approximation:
 $$
 \rho_\sigma(r)
 =
-1 - \exp\left(-\frac{r^2}{2\sigma^2}\right).
+\sigma^2
+\left[
+1 - \exp\left(-\frac{r^2}{2\sigma^2}\right)
+\right].
 $$
 
-The saturation scale `sigma` is measured in logit units. The default
-`sigma = 1` allows the smoothing force to decay quickly once neighboring
-basis coefficients differ by one or more logit units.
+The saturation scale `sigma` is measured in logit units per spatial unit. The
+small-slope behavior is $\rho_\sigma(r) \approx r^2 / 2$, matching quadratic
+smoothing with the same `lambda`. The asymptotic per-component penalty is
+$\sigma^2$.
 
 The sum is over $K-1$ optimized classes because the final class is the
 reference class with $w_{Km}=0$. These penalties are currently applied
@@ -438,7 +456,7 @@ The entropy penalty is:
 $$
 R_{\text{entropy}}(W)
 =
-\alpha
+\frac{\alpha}{M}
 \sum_m
 \left[
 -
@@ -452,7 +470,7 @@ The Gini impurity penalty is:
 $$
 R_{\text{gini}}(W)
 =
-\alpha
+\frac{\alpha}{M}
 \sum_m
 \left[
 1 -
@@ -461,9 +479,10 @@ R_{\text{gini}}(W)
 \right].
 $$
 
-Here $\alpha$ is `purity_lambda`. Both penalties are minimized when each
-basis point is close to a one-hot cell-type prior. Gini is bounded and often a
-gentler first choice; entropy is sharper near the simplex corners.
+Here $\alpha$ is `purity_lambda` and $M$ is the number of active basis points.
+Both penalties are minimized when each basis point is close to a one-hot
+cell-type prior. Gini is bounded and often a gentler first choice; entropy is
+sharper near the simplex corners.
 
 ## Gradient Derivation
 
@@ -516,7 +535,7 @@ By the chain rule,
 
 ```text
 d L / d w[k, m]
-  = sum_i phi_im * (p[i, k] - q[i, k])
+  = (1 / N) * sum_i phi_im * (p[i, k] - q[i, k])
     + d R / d w[k, m]
 ```
 
@@ -525,6 +544,7 @@ So:
 $$
 \frac{\partial \mathcal L}{\partial w_{km}}
 =
+\frac{1}{N}
 \sum_i
 \phi_{im}
 \left(
@@ -541,7 +561,8 @@ For the quadratic smoothing term:
 
 ```text
 d R / d w[k, m]
-  = lambda * sum_(n adjacent to m) (w[k, m] - w[k, n])
+  = (lambda / |E|) * sum_(n adjacent to m)
+      (w[k, m] - w[k, n]) / d[m, n]^2
 ```
 
 In equation form:
@@ -549,11 +570,13 @@ In equation form:
 $$
 \frac{\partial R}{\partial w_{km}}
 =
-\lambda
+\frac{\lambda}{|E|}
 \sum_{n : (m,n)\in E}
-\left(
+\frac{
 w_{km} - w_{kn}
-\right).
+}{
+d_{mn}^2
+}.
 $$
 
 The C++ backend computes the objective and analytic gradient together.
@@ -575,7 +598,7 @@ $$
 \rho_\sigma'(r)
 =
 \exp\left(-\frac{r^2}{2\sigma^2}\right)
-\frac{r}{\sigma^2}.
+r.
 $$
 
 For a general purity penalty $h(\pi_m)$, the softmax chain rule gives:
@@ -634,7 +657,7 @@ This is a good default for the current model because:
 - `basis_weights`: fitted basis coefficients `w[k, m]`
 - `basis_points`: spatial coordinates of lattice basis points
 - `basis_lattice`: integer lattice coordinates
-- `basis_edges`: neighboring basis point graph
+- `basis_edges`: neighboring basis point graph with physical edge distances
 - `transcripts_df`: filtered transcript data with MAP labels
 - `optim`: the optimizer result
 - `optim_history`: optimizer results from each spatial field fit

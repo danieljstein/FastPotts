@@ -45,6 +45,7 @@ List spatial_basis_objective_cpp(
     const NumericMatrix& log_signature,
     const IntegerVector& edge_from,
     const IntegerVector& edge_to,
+    const NumericVector& edge_distance,
     const double lambda,
     const int regularization,
     const double delta,
@@ -74,6 +75,9 @@ List spatial_basis_objective_cpp(
     }
     if (edge_to.size() != n_edges) {
         stop("edge_from and edge_to must have the same length.");
+    }
+    if (edge_distance.size() != n_edges) {
+        stop("edge_distance must have the same length as edge_from and edge_to.");
     }
     if (regularization < 0 || regularization > 2) {
         stop("regularization must be 0, 1, or 2.");
@@ -188,7 +192,14 @@ List spatial_basis_objective_cpp(
         }
     }
 
+    const double inv_n = 1.0 / static_cast<double>(n);
+    objective *= inv_n;
+    for (int j = 0; j < n_par; ++j) {
+        grad[j] *= inv_n;
+    }
+
     if (purity_lambda > 0.0 && purity > 0) {
+        const double purity_scale = purity_lambda / static_cast<double>(n_basis);
         std::vector<double> logits(n_cell_types);
         std::vector<double> pi(n_cell_types);
         std::vector<double> d_penalty_d_pi(n_cell_types);
@@ -225,56 +236,63 @@ List spatial_basis_objective_cpp(
                 expected_derivative += pi[k] * d_penalty_d_pi[k];
             }
 
-            objective += purity_lambda * penalty;
+            objective += purity_scale * penalty;
 
             for (int k = 0; k < n_free; ++k) {
-                grad[m + n_basis * k] += purity_lambda * pi[k] *
+                grad[m + n_basis * k] += purity_scale * pi[k] *
                     (d_penalty_d_pi[k] - expected_derivative);
             }
         }
     }
 
-    if (lambda > 0.0) {
+    if (lambda > 0.0 && n_edges > 0) {
+        const double edge_scale = lambda / static_cast<double>(n_edges);
         for (int e = 0; e < n_edges; ++e) {
             const int m1 = edge_from[e];
             const int m2 = edge_to[e];
+            const double distance = edge_distance[e];
 
             if (m1 < 0 || m1 >= n_basis || m2 < 0 || m2 >= n_basis) {
                 stop("edge indices must be valid basis indices.");
+            }
+            if (!R_finite(distance) || distance <= 0.0) {
+                stop("edge_distance must contain positive finite values.");
             }
 
             for (int k = 0; k < n_free; ++k) {
                 const int idx1 = m1 + n_basis * k;
                 const int idx2 = m2 + n_basis * k;
                 const double diff = par[idx1] - par[idx2];
+                const double slope = diff / distance;
 
                 double penalty = 0.0;
-                double derivative = 0.0;
+                double derivative_wrt_slope = 0.0;
 
                 if (regularization == 0) {
-                    penalty = 0.5 * diff * diff;
-                    derivative = diff;
+                    penalty = 0.5 * slope * slope;
+                    derivative_wrt_slope = slope;
                 } else if (regularization == 1) {
-                    const double abs_diff = std::abs(diff);
+                    const double abs_slope = std::abs(slope);
 
-                    if (abs_diff <= delta) {
-                        penalty = 0.5 * diff * diff;
-                        derivative = diff;
+                    if (abs_slope <= delta) {
+                        penalty = 0.5 * slope * slope;
+                        derivative_wrt_slope = slope;
                     } else {
-                        penalty = delta * (abs_diff - 0.5 * delta);
-                        derivative = delta * ((diff >= 0.0) ? 1.0 : -1.0);
+                        penalty = delta * (abs_slope - 0.5 * delta);
+                        derivative_wrt_slope = delta * ((slope >= 0.0) ? 1.0 : -1.0);
                     }
                 } else {
-                    const double scaled = diff / sigma;
+                    const double scaled = slope / sigma;
                     const double attenuation = std::exp(-0.5 * scaled * scaled);
 
-                    penalty = 1.0 - attenuation;
-                    derivative = attenuation * diff / (sigma * sigma);
+                    penalty = sigma * sigma * (1.0 - attenuation);
+                    derivative_wrt_slope = attenuation * slope;
                 }
 
-                objective += lambda * penalty;
-                grad[idx1] += lambda * derivative;
-                grad[idx2] -= lambda * derivative;
+                const double derivative = derivative_wrt_slope / distance;
+                objective += edge_scale * penalty;
+                grad[idx1] += edge_scale * derivative;
+                grad[idx2] -= edge_scale * derivative;
             }
         }
     }

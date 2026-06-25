@@ -27,7 +27,7 @@ basis_design_from_barycentric <- function(basis) {
     )
 }
 
-build_lattice_neighbor_edges <- function(basis_lattice, basis) {
+build_lattice_neighbor_edges <- function(basis_lattice, basis, s) {
     basis = match.arg(basis, c("tri", "bcc"))
     key = do.call(paste, c(as.data.frame(basis_lattice), sep = ":"))
     key_to_id = seq_along(key)
@@ -39,6 +39,7 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
             c(0L, 1L),
             c(1L, -1L)
         )
+        offset_lengths = rep(as.numeric(s), nrow(offsets))
     } else {
         offsets = rbind(
             c(2L, 0L, 0L),
@@ -46,10 +47,12 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
             c(0L, 0L, 2L),
             as.matrix(expand.grid(c(-1L, 1L), c(-1L, 1L), c(-1L, 1L)))
         )
+        offset_lengths = sqrt(rowSums((offsets * as.numeric(s) / 2)^2))
     }
 
     from = integer()
     to = integer()
+    distance = numeric()
 
     for (a in seq_len(nrow(offsets))) {
         neighbor = sweep(basis_lattice, 2, offsets[a, ], "+")
@@ -59,10 +62,22 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis) {
 
         from = c(from, which(keep))
         to = c(to, neighbor_id[keep])
+        distance = c(distance, rep(offset_lengths[a], sum(keep)))
     }
 
     keep = from < to
-    cbind(from = from[keep], to = to[keep])
+    cbind(from = from[keep], to = to[keep], distance = distance[keep])
+}
+
+normalize_spatial_basis <- function(basis) {
+    basis = match.arg(tolower(basis), c("2d", "3d", "tri", "bcc"))
+    if (basis == "tri") {
+        return("2d")
+    }
+    if (basis == "bcc") {
+        return("3d")
+    }
+    basis
 }
 
 update_signatures_from_posteriors <- function(
@@ -170,16 +185,17 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #' @param cell_signatures A numeric matrix with genes in rows and cell types in
 #'   columns. Values are treated as gene emission probabilities for each cell
 #'   type.
-#' @param basis Character; either `"tri"` for a 2D triangular lattice or
-#'   `"bcc"` for a 3D BCC lattice.
-#' @param s Positive numeric mesh size. For `basis = "tri"`, this is the side
-#'   length of each equilateral Delaunay triangle. For `basis = "bcc"`, this is
+#' @param basis Character; either `"2d"` for a 2D triangular lattice or `"3d"`
+#'   for a 3D BCC lattice. The older values `"tri"` and `"bcc"` are accepted as
+#'   aliases.
+#' @param s Positive numeric mesh size. For `basis = "2d"`, this is the side
+#'   length of each equilateral Delaunay triangle. For `basis = "3d"`, this is
 #'   the distance between same-parity BCC lattice points along a coordinate
 #'   axis, matching the longest Delaunay tetrahedron edge length.
 #' @param x Character; column name for x-coordinates.
 #' @param y Character; column name for y-coordinates.
 #' @param z Character; column name for z-coordinates. Used only when
-#'   `basis = "bcc"`.
+#'   `basis = "3d"`.
 #' @param gene Character; column name for gene identifiers.
 #' @param qv Character; column name for quality values.
 #' @param is_gene Character; column name indicating whether a transcript should
@@ -188,15 +204,20 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #' @param origin Numeric lattice origin. Defaults to zeros with length matching
 #'   the selected basis dimension.
 #' @param lambda Non-negative smoothing strength between neighboring basis
-#'   coefficients.
+#'   coefficients. The transcript likelihood is averaged over transcripts and
+#'   the spatial penalty is averaged over graph edges, so `lambda` is on an
+#'   approximate per-transcript, per-edge spatial-slope scale.
 #' @param regularization Character; one of `"quadratic"`, `"huber"`, or
-#'   `"bounded"`. Quadratic smoothing penalizes squared logit differences,
-#'   Huber smoothing is quadratic near zero and linear past `delta`, and
-#'   bounded smoothing uses `1 - exp(-d^2 / (2 * sigma^2))`.
-#' @param delta Positive Huber transition scale in logit units. Used only when
-#'   `regularization = "huber"`.
-#' @param sigma Positive bounded-penalty saturation scale in logit units. Used
-#'   only when `regularization = "bounded"`.
+#'   `"bounded"`. All options are applied to the spatial logit slope between
+#'   neighboring basis points, `(w_m - w_n) / edge_distance`. Quadratic
+#'   smoothing penalizes squared slope, Huber smoothing is quadratic near zero
+#'   and linear past `delta`, and bounded smoothing has quadratic small-slope
+#'   behavior with asymptotic bound `sigma^2`.
+#' @param delta Positive Huber transition scale in logit units per spatial
+#'   unit. Used only when `regularization = "huber"`.
+#' @param sigma Positive bounded-penalty slope scale in logit units per spatial
+#'   unit. Used only when `regularization = "bounded"`; the per-component
+#'   asymptotic penalty is `sigma^2`.
 #' @param purity Character; one of `"none"`, `"entropy"`, or `"gini"`.
 #'   Entropy and Gini purity penalties encourage each basis point's cell-type
 #'   prior to concentrate on fewer cell types.
@@ -236,7 +257,8 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #'     the reference class with coefficient zero.}
 #'   \item{basis_points}{Matrix of lattice basis point coordinates.}
 #'   \item{basis_lattice}{Matrix of integer lattice coordinates.}
-#'   \item{basis_edges}{Two-column matrix of neighboring basis point indices.}
+#'   \item{basis_edges}{Matrix of neighboring basis point indices and physical
+#'     edge distances.}
 #'   \item{transcripts_df}{Filtered input data with added `label` column.}
 #'   \item{optim}{The [stats::optim()] result.}
 #'   \item{optim_history}{List of optimizer results, one per spatial field fit.}
@@ -252,7 +274,7 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #' fit <- spatial_basis_segmentation(
 #'   transcripts_df,
 #'   cell_signatures,
-#'   basis = "tri",
+#'   basis = "2d",
 #'   s = 2
 #' )
 #' fit$marginals
@@ -262,7 +284,7 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 spatial_basis_segmentation <- function(
     transcripts_df,
     cell_signatures,
-    basis = c("tri", "bcc"),
+    basis = c("2d", "3d", "tri", "bcc"),
     s,
     x = "x_location",
     y = "y_location",
@@ -290,10 +312,11 @@ spatial_basis_segmentation <- function(
     n_threads = NULL,
     show_progress = TRUE
 ) {
-    basis = match.arg(basis)
+    basis = normalize_spatial_basis(basis)
+    lattice_basis = if (basis == "2d") "tri" else "bcc"
     regularization = match.arg(regularization)
     purity = match.arg(purity)
-    d = if (basis == "tri") 2L else 3L
+    d = if (basis == "2d") 2L else 3L
 
     if (is.null(origin)) {
         origin = rep(0, d)
@@ -391,13 +414,13 @@ spatial_basis_segmentation <- function(
         stop("signature_prior_strength must be NULL or a non-negative finite number.")
     }
 
-    coord_cols = if (basis == "tri") c(x, y) else c(x, y, z)
+    coord_cols = if (basis == "2d") c(x, y) else c(x, y, z)
     coords = as.matrix(df[, coord_cols, drop = FALSE])
 
     if (show_progress) {
         message("Computing spatial basis interpolation...")
     }
-    bary = if (basis == "tri") {
+    bary = if (basis == "2d") {
         tri_barycentric(coords, s = s, origin = origin, n_threads = basis_n_threads)
     } else {
         bcc_barycentric(coords, s = s, origin = origin, n_threads = basis_n_threads)
@@ -407,7 +430,7 @@ spatial_basis_segmentation <- function(
     if (show_progress) {
         message("Building lattice neighbor graph...")
     }
-    basis_edges = build_lattice_neighbor_edges(design$basis_lattice, basis = basis)
+    basis_edges = build_lattice_neighbor_edges(design$basis_lattice, basis = lattice_basis, s = s)
 
     gene_index = match(df[[gene]], rownames(signatures))
     K = ncol(signatures)
@@ -420,6 +443,7 @@ spatial_basis_segmentation <- function(
     basis_id0 = design$basis_id - 1L
     edge_from0 = as.integer(basis_edges[, "from"] - 1L)
     edge_to0 = as.integer(basis_edges[, "to"] - 1L)
+    edge_distance = as.numeric(basis_edges[, "distance"])
     regularization_id = match(regularization, c("quadratic", "huber", "bounded")) - 1L
     purity_id = match(purity, c("none", "entropy", "gini")) - 1L
 
@@ -434,6 +458,7 @@ spatial_basis_segmentation <- function(
                 log_signature = log_signature,
                 edge_from = edge_from0,
                 edge_to = edge_to0,
+                edge_distance = edge_distance,
                 lambda = lambda,
                 regularization = regularization_id,
                 delta = delta,

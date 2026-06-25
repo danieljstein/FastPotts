@@ -7,7 +7,7 @@
 spatial_basis_segmentation(
   transcripts_df,
   cell_signatures,
-  basis = c("tri", "bcc"),
+  basis = c("2d", "3d", "tri", "bcc"),
   s,
   x = "x_location",
   y = "y_location",
@@ -43,11 +43,12 @@ spatial_basis_segmentation(
 columns. Values are treated as gene emission probabilities for each cell
 type.}
 
-\item{basis}{Character; either \code{"tri"} for a 2D triangular lattice or
-\code{"bcc"} for a 3D BCC lattice.}
+\item{basis}{Character; either \code{"2d"} for a 2D triangular lattice or \code{"3d"}
+for a 3D BCC lattice. The older values \code{"tri"} and \code{"bcc"} are accepted as
+aliases.}
 
-\item{s}{Positive numeric mesh size. For \code{basis = "tri"}, this is the side
-length of each equilateral Delaunay triangle. For \code{basis = "bcc"}, this is
+\item{s}{Positive numeric mesh size. For \code{basis = "2d"}, this is the side
+length of each equilateral Delaunay triangle. For \code{basis = "3d"}, this is
 the distance between same-parity BCC lattice points along a coordinate
 axis, matching the longest Delaunay tetrahedron edge length.}
 
@@ -56,7 +57,7 @@ axis, matching the longest Delaunay tetrahedron edge length.}
 \item{y}{Character; column name for y-coordinates.}
 
 \item{z}{Character; column name for z-coordinates. Used only when
-\code{basis = "bcc"}.}
+\code{basis = "3d"}.}
 
 \item{gene}{Character; column name for gene identifiers.}
 
@@ -71,18 +72,23 @@ be treated as a gene. If absent, no gene-only filtering is applied.}
 the selected basis dimension.}
 
 \item{lambda}{Non-negative smoothing strength between neighboring basis
-coefficients.}
+coefficients. The transcript likelihood is averaged over transcripts and
+the spatial penalty is averaged over graph edges, so \code{lambda} is on an
+approximate per-transcript, per-edge spatial-slope scale.}
 
 \item{regularization}{Character; one of \code{"quadratic"}, \code{"huber"}, or
-\code{"bounded"}. Quadratic smoothing penalizes squared logit differences,
-Huber smoothing is quadratic near zero and linear past \code{delta}, and
-bounded smoothing uses \code{1 - exp(-d^2 / (2 * sigma^2))}.}
+\code{"bounded"}. All options are applied to the spatial logit slope between
+neighboring basis points, \code{(w_m - w_n) / edge_distance}. Quadratic
+smoothing penalizes squared slope, Huber smoothing is quadratic near zero
+and linear past \code{delta}, and bounded smoothing has quadratic small-slope
+behavior with asymptotic bound \code{sigma^2}.}
 
-\item{delta}{Positive Huber transition scale in logit units. Used only when
-\code{regularization = "huber"}.}
+\item{delta}{Positive Huber transition scale in logit units per spatial
+unit. Used only when \code{regularization = "huber"}.}
 
-\item{sigma}{Positive bounded-penalty saturation scale in logit units. Used
-only when \code{regularization = "bounded"}.}
+\item{sigma}{Positive bounded-penalty slope scale in logit units per spatial
+unit. Used only when \code{regularization = "bounded"}; the per-component
+asymptotic penalty is \code{sigma^2}.}
 
 \item{purity}{Character; one of \code{"none"}, \code{"entropy"}, or \code{"gini"}.
 Entropy and Gini purity penalties encourage each basis point's cell-type
@@ -135,7 +141,8 @@ lattice basis point and one column per cell type. The final cell type is
 the reference class with coefficient zero.}
 \item{basis_points}{Matrix of lattice basis point coordinates.}
 \item{basis_lattice}{Matrix of integer lattice coordinates.}
-\item{basis_edges}{Two-column matrix of neighboring basis point indices.}
+\item{basis_edges}{Matrix of neighboring basis point indices and physical
+edge distances.}
 \item{transcripts_df}{Filtered input data with added \code{label} column.}
 \item{optim}{The \code{\link[stats:optim]{stats::optim()}} result.}
 \item{optim_history}{List of optimizer results, one per spatial field fit.}
@@ -165,7 +172,7 @@ by the corresponding gene signature probability.
 fit <- spatial_basis_segmentation(
   transcripts_df,
   cell_signatures,
-  basis = "tri",
+  basis = "2d",
   s = 2
 )
 fit$marginals
