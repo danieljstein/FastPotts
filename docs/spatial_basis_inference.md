@@ -356,7 +356,7 @@ have distance $s$.
 
 ### Quadratic
 
-The default is quadratic smoothing:
+Quadratic smoothing is:
 
 $$
 R(W)
@@ -392,7 +392,7 @@ as smooth variation and larger slopes more like boundaries.
 
 ### Bounded
 
-The bounded option is a Potts-like smooth approximation:
+The bounded option is the default. It is a Potts-like smooth approximation:
 
 $$
 \rho_\sigma(r)
@@ -668,23 +668,41 @@ This is a good default for the current model because:
 
 ## Current Limitations
 
-The current implementation is intentionally a first MAP estimator:
+The current implementation is a MAP estimator for a continuous cell-type field.
+Several earlier planned extensions are now implemented: 2D/3D bases,
+mesh-normalized quadratic/Huber/bounded smoothing, basis-point purity penalties,
+OpenMP parallelization for basis construction/objective/prediction, and optional
+signature refinement.
 
-- Signature refinement is optional and conservative; poor initial signatures
-  can still bias the posterior updates.
-- Quadratic regularization encourages smooth fields and may blur sharp cell
-  boundaries. Huber and bounded regularization are available to reduce this,
-  but introduce additional logit-scale parameters.
-- Only basis points touched by at least one transcript are included.
-- The final cell type is used as the reference class.
+Remaining limitations include:
+
+- Signature refinement is optional and conservative. Poor initial signatures or
+  strong spatial contamination can still bias posterior updates.
+- The model infers cell-type fields and transcript-level cell-type posteriors,
+  but does not yet split those fields into individual cell instances.
+- There is no explicit background, ambient RNA, or noise component. Unmodeled
+  transcripts must currently be absorbed by one of the supplied cell types.
+- Hyperparameters such as mesh size, `lambda`, `sigma`, `delta`,
+  `purity_lambda`, and signature refinement strength still require user choice
+  or empirical tuning.
+- Only basis points touched by at least one transcript are included. This is
+  efficient, but it means empty regions do not carry explicit field variables.
+- The final cell type is used as the reference class. This is identifiable, but
+  basis coefficients are relative logits rather than symmetric per-cell-type
+  parameters.
+- Optimization is full-batch L-BFGS-B. It is deterministic and uses analytic
+  gradients, but very large datasets may need minibatch or GPU-accelerated
+  alternatives.
 
 Natural next extensions include:
 
-- robust or total-variation-like smoothing to preserve sharper boundaries
-- minibatch Adam for very large datasets, followed by L-BFGS-B polishing
 - explicit background/noise components
-- priors or penalties that encourage sparse cell-type occupancy per basis point
-- GPU acceleration
+- automatic or data-adaptive selection of mesh size and regularization strength
+- individual-cell partitioning after cell-type field inference
+- minibatch Adam or stochastic quasi-Newton initialization for very large
+  datasets, followed by L-BFGS-B polishing
+- GPU acceleration for objective/gradient and prediction
+- multiscale bases from subcellular resolution up to tissue-scale context
 
 Other open questions and directions:
 

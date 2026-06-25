@@ -70,6 +70,9 @@ build_lattice_neighbor_edges <- function(basis_lattice, basis, s) {
 }
 
 normalize_spatial_basis <- function(basis) {
+    if (length(basis) > 1L) {
+        basis = basis[1L]
+    }
     basis = match.arg(tolower(basis), c("2d", "3d", "tri", "bcc"))
     if (basis == "tri") {
         return("2d")
@@ -274,7 +277,7 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #' fit <- spatial_basis_segmentation(
 #'   transcripts_df,
 #'   cell_signatures,
-#'   basis = "2d",
+#'   basis = "3d",
 #'   s = 2
 #' )
 #' fit$marginals
@@ -284,7 +287,7 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 spatial_basis_segmentation <- function(
     transcripts_df,
     cell_signatures,
-    basis = c("2d", "3d", "tri", "bcc"),
+    basis = c("3d", "2d", "tri", "bcc"),
     s,
     x = "x_location",
     y = "y_location",
@@ -295,7 +298,7 @@ spatial_basis_segmentation <- function(
     qv_threshold = 20,
     origin = NULL,
     lambda = 1,
-    regularization = c("quadratic", "huber", "bounded"),
+    regularization = c("bounded", "quadratic", "huber"),
     delta = 1,
     sigma = 1,
     purity = c("none", "entropy", "gini"),

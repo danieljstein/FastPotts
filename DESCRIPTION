@@ -1,10 +1,11 @@
 Package: FastPotts
-Title: Loopy Belief Propagation for the Potts Model
-Version: 0.0.0.9000
+Title: Spatial Transcriptomics Segmentation with Potts and Basis Models
+Version: 0.1.0
 Authors@R: 
     person("Daniel", "Stein", , "djs31415@gmail.com", role = c("aut", "cre"))
-Description: Implements loopy belief propagation for inference in the Potts model.
-    Our use case is for cell segmentation.
+Description: Implements spatial transcriptomics segmentation methods, including
+    loopy belief propagation for Potts-model transcript graphs and continuous
+    spatial basis models for cell-type fields.
 License: GPL (>= 3)
 SystemRequirements: OpenMP
 Encoding: UTF-8

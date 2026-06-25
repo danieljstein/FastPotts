@@ -7,7 +7,7 @@
 spatial_basis_segmentation(
   transcripts_df,
   cell_signatures,
-  basis = c("2d", "3d", "tri", "bcc"),
+  basis = c("3d", "2d", "tri", "bcc"),
   s,
   x = "x_location",
   y = "y_location",
@@ -18,7 +18,7 @@ spatial_basis_segmentation(
   qv_threshold = 20,
   origin = NULL,
   lambda = 1,
-  regularization = c("quadratic", "huber", "bounded"),
+  regularization = c("bounded", "quadratic", "huber"),
   delta = 1,
   sigma = 1,
   purity = c("none", "entropy", "gini"),
@@ -172,7 +172,7 @@ by the corresponding gene signature probability.
 fit <- spatial_basis_segmentation(
   transcripts_df,
   cell_signatures,
-  basis = "2d",
+  basis = "3d",
   s = 2
 )
 fit$marginals
