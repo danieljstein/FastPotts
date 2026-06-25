@@ -305,6 +305,8 @@ The alternating algorithm is:
 4. Warm-start another spatial field fit from the previous basis weights.
 
 This repeats `signature_update_iters` times when `refine_signatures = TRUE`.
+The first spatial fit uses `maxit`; warm-started refits after signature updates
+use `refinement_maxit` when supplied, otherwise they also use `maxit`.
 The returned object includes `cell_signatures_initial`, final
 `cell_signatures`, `signature_history`, `signature_update_history`, and
 `optim_history`.

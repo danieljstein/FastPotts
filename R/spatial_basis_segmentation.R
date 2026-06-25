@@ -242,7 +242,11 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #' @param signature_min_posterior Numeric in `[0, 1]`; if positive, only
 #'   posterior assignment weights at least this large contribute to signature
 #'   soft counts.
-#' @param maxit Integer maximum number of L-BFGS iterations.
+#' @param maxit Integer maximum number of L-BFGS iterations for the first
+#'   spatial field fit.
+#' @param refinement_maxit Integer maximum number of L-BFGS iterations for
+#'   warm-started spatial field refits after signature updates. If `NULL`,
+#'   uses `maxit`.
 #' @param reltol Approximate relative convergence tolerance. For the
 #'   `"L-BFGS-B"` optimizer this is converted to `factr = reltol /
 #'   .Machine$double.eps`.
@@ -311,6 +315,7 @@ spatial_basis_segmentation <- function(
     signature_update_rate = 0.25,
     signature_min_posterior = 0,
     maxit = 100L,
+    refinement_maxit = NULL,
     reltol = 1e-6,
     n_threads = NULL,
     show_progress = TRUE
@@ -359,6 +364,27 @@ spatial_basis_segmentation <- function(
     }
     if (length(signature_min_posterior) != 1L || !is.finite(signature_min_posterior) || signature_min_posterior < 0 || signature_min_posterior > 1) {
         stop("signature_min_posterior must be a finite number in [0, 1].")
+    }
+    if (
+        length(maxit) != 1L ||
+        !is.finite(maxit) ||
+        maxit < 1 ||
+        maxit != as.integer(maxit)
+    ) {
+        stop("maxit must be a positive integer.")
+    }
+    maxit = as.integer(maxit)
+    if (is.null(refinement_maxit)) {
+        refinement_maxit = maxit
+    } else if (
+        length(refinement_maxit) != 1L ||
+        !is.finite(refinement_maxit) ||
+        refinement_maxit < 1 ||
+        refinement_maxit != as.integer(refinement_maxit)
+    ) {
+        stop("refinement_maxit must be NULL or a positive integer.")
+    } else {
+        refinement_maxit = as.integer(refinement_maxit)
     }
     if (is.null(n_threads)) {
         n_threads = 0L
@@ -477,17 +503,18 @@ spatial_basis_segmentation <- function(
         if (show_progress) {
             message("Optimizing continuous spatial field", if (fit_iter > 1L) paste0(" (fit ", fit_iter, ")") else "", "...")
         }
+        iter_maxit = if (fit_iter == 1L) maxit else refinement_maxit
         opt = stats::optim(
             par = par_start,
             fn = function(par) objective(par)$value,
             gr = function(par) objective(par)$gradient,
             method = "L-BFGS-B",
             control = list(
-                maxit = as.integer(maxit),
+                maxit = iter_maxit,
                 factr = reltol / .Machine$double.eps
             )
         )
-        warn_spatial_basis_optim_status(opt, maxit)
+        warn_spatial_basis_optim_status(opt, iter_maxit)
 
         pred = spatial_basis_predict_cpp(
             par = opt$par,

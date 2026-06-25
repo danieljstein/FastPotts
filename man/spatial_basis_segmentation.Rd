@@ -31,6 +31,7 @@ spatial_basis_segmentation(
   signature_update_rate = 0.25,
   signature_min_posterior = 0,
   maxit = 100L,
+  refinement_maxit = NULL,
   reltol = 1e-06,
   n_threads = NULL,
   show_progress = TRUE
@@ -120,7 +121,12 @@ signature update.}
 posterior assignment weights at least this large contribute to signature
 soft counts.}
 
-\item{maxit}{Integer maximum number of L-BFGS iterations.}
+\item{maxit}{Integer maximum number of L-BFGS iterations for the first
+spatial field fit.}
+
+\item{refinement_maxit}{Integer maximum number of L-BFGS iterations for
+warm-started spatial field refits after signature updates. If \code{NULL},
+uses \code{maxit}.}
 
 \item{reltol}{Approximate relative convergence tolerance. For the
 \code{"L-BFGS-B"} optimizer this is converted to \code{factr = reltol / .Machine$double.eps}.}
