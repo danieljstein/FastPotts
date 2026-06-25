@@ -1,0 +1,92 @@
+#' Barycentric coordinates on a body-centered cubic lattice
+#'
+#' Computes the four active piecewise-linear basis functions for each point on
+#' a body-centered cubic (BCC) lattice. The lattice is the union of
+#' `(s*i, s*j, s*k)` and `(s/2 + s*i, s/2 + s*j, s/2 + s*k)`, optionally
+#' shifted by `origin`.
+#'
+#' For each query point, the function finds the containing BCC Delaunay
+#' tetrahedron and returns its four vertices and barycentric weights. Away from
+#' tetrahedron boundaries exactly four basis functions are non-zero. On faces,
+#' edges, or vertices, some returned weights may be zero.
+#'
+#' The Delaunay tetrahedra are all congruent. For mesh size `s`, each
+#' tetrahedron has four edges of length `sqrt(3) * s / 2` and two opposite
+#' edges of length `s`. Thus for `s = 1`, the tetrahedron edge lengths are
+#' `sqrt(3) / 2, sqrt(3) / 2, sqrt(3) / 2, sqrt(3) / 2, 1, 1`.
+#'
+#' @param coords Numeric matrix or data frame with three columns containing
+#'   query coordinates.
+#' @param s Positive numeric mesh size. This is the distance between
+#'   same-parity BCC lattice points along each coordinate axis, matching the
+#'   longest Delaunay tetrahedron edge length.
+#' @param origin Numeric vector of length three giving the lattice origin.
+#' @param tol Numeric tolerance used for tetrahedron boundary checks.
+#' @param n_threads Integer number of OpenMP threads. If `NULL`, uses the
+#'   OpenMP runtime default.
+#'
+#' @return A list with components:
+#' \describe{
+#'   \item{weights}{Numeric matrix with four barycentric weights per row of
+#'     `coords`.}
+#'   \item{points}{Numeric array of dimension `n x 4 x 3` containing the four
+#'     active lattice points for each query point.}
+#'   \item{lattice}{Integer array of dimension `n x 4 x 3` containing the
+#'     normalized BCC lattice coordinates before multiplying by `s / 2` and
+#'     adding `origin`.}
+#' }
+#'
+#' @examples
+#' coords <- matrix(c(0.75, 0.75, 0.25), ncol = 3)
+#' bcc <- bcc_barycentric(coords, s = 1)
+#' rowSums(bcc$weights)
+#'
+#' @export
+bcc_barycentric <- function(coords, s, origin = c(0, 0, 0), tol = 1e-10, n_threads = NULL) {
+    coords <- as.matrix(coords)
+
+    if (ncol(coords) != 3L) {
+        stop("coords must have exactly 3 columns.")
+    }
+
+    if (
+        length(s) != 1L ||
+        !is.finite(s) ||
+        s <= 0
+    ) {
+        stop("s must be a positive finite number.")
+    }
+
+    if (length(origin) != 3L || any(!is.finite(origin))) {
+        stop("origin must be a finite numeric vector of length 3.")
+    }
+
+    if (
+        length(tol) != 1L ||
+        !is.finite(tol) ||
+        tol < 0
+    ) {
+        stop("tol must be a non-negative finite number.")
+    }
+
+    if (is.null(n_threads)) {
+        n_threads <- 0L
+    } else if (
+        length(n_threads) != 1L ||
+        !is.finite(n_threads) ||
+        n_threads < 1 ||
+        n_threads != as.integer(n_threads)
+    ) {
+        stop("n_threads must be NULL or a positive integer.")
+    } else {
+        n_threads <- as.integer(n_threads)
+    }
+
+    bcc_barycentric_cpp(
+        coords,
+        s = as.numeric(s) / 2,
+        origin = as.numeric(origin),
+        tol = as.numeric(tol),
+        n_threads = n_threads
+    )
+}
