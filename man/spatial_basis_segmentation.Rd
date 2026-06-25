@@ -142,9 +142,8 @@ A list with components:
 \item{marginals}{Matrix of posterior transcript probabilities.}
 \item{spatial_prior}{Matrix of fitted spatial prior probabilities.}
 \item{logits}{Matrix of fitted spatial logits at transcript locations.}
-\item{basis_weights}{Matrix of fitted basis coefficients, one row per
-lattice basis point and one column per cell type. The final cell type is
-the reference class with coefficient zero.}
+\item{basis_weights}{Matrix of fitted centered basis coefficients, one row
+per lattice basis point and one column per cell type. Rows sum to zero.}
 \item{basis_points}{Matrix of lattice basis point coordinates.}
 \item{basis_lattice}{Matrix of integer lattice coordinates.}
 \item{basis_edges}{Matrix of neighboring basis point indices and physical

@@ -259,9 +259,8 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #'   \item{marginals}{Matrix of posterior transcript probabilities.}
 #'   \item{spatial_prior}{Matrix of fitted spatial prior probabilities.}
 #'   \item{logits}{Matrix of fitted spatial logits at transcript locations.}
-#'   \item{basis_weights}{Matrix of fitted basis coefficients, one row per
-#'     lattice basis point and one column per cell type. The final cell type is
-#'     the reference class with coefficient zero.}
+#'   \item{basis_weights}{Matrix of fitted centered basis coefficients, one row
+#'     per lattice basis point and one column per cell type. Rows sum to zero.}
 #'   \item{basis_points}{Matrix of lattice basis point coordinates.}
 #'   \item{basis_lattice}{Matrix of integer lattice coordinates.}
 #'   \item{basis_edges}{Matrix of neighboring basis point indices and physical
@@ -468,7 +467,7 @@ spatial_basis_segmentation <- function(
         stop("cell_signatures must contain at least two cell types.")
     }
 
-    par0 = numeric(M * (K - 1L))
+    par0 = numeric(M * K)
     basis_id0 = design$basis_id - 1L
     edge_from0 = as.integer(basis_edges[, "from"] - 1L)
     edge_to0 = as.integer(basis_edges[, "to"] - 1L)
@@ -569,8 +568,8 @@ spatial_basis_segmentation <- function(
     colnames(pred$prior) = colnames(current_signatures)
     colnames(pred$logits) = colnames(current_signatures)
 
-    basis_weights = matrix(0, nrow = M, ncol = K)
-    basis_weights[, seq_len(K - 1L)] = matrix(opt$par, nrow = M, ncol = K - 1L)
+    raw_basis_weights = matrix(opt$par, nrow = M, ncol = K)
+    basis_weights = sweep(raw_basis_weights, 1L, rowMeans(raw_basis_weights), "-")
     colnames(basis_weights) = colnames(current_signatures)
 
     labels = max.col(pred$posterior, ties.method = "first")

@@ -136,20 +136,22 @@ $$
 ## Identifiability
 
 The softmax is invariant to adding the same constant to every cell-type logit
-at a location. To remove this redundancy, the implementation uses a reference
-class parameterization:
+at a location. To remove this redundancy without making any cell type special,
+the implementation uses a centered-logit parameterization at each basis point:
 
 ```text
-w[K, m] = 0
+sum_k w[k, m] = 0
 ```
 
-for every basis point `m`. Only the first `K - 1` cell-type fields are
-optimized.
+The optimizer stores one unconstrained value per basis point and cell type.
+Internally, these values are centered so that their sum is zero. This keeps the
+optimization unconstrained while making the fitted objective invariant to the
+order of the input signature columns.
 
 Thus:
 
 $$
-w_{Km} = 0
+\sum_{k=1}^K w_{km} = 0
 \quad \text{for all basis points } m.
 $$
 
@@ -365,7 +367,7 @@ R(W)
 =
 \frac{\lambda}{|E|}
 \sum_{(m,n)\in E}
-\sum_{k=1}^{K-1}
+\sum_{k=1}^{K}
 \frac{1}{2}
 \left(
 \frac{w_{km} - w_{kn}}{d_{mn}}
@@ -410,9 +412,8 @@ small-slope behavior is $\rho_\sigma(r) \approx r^2 / 2$, matching quadratic
 smoothing with the same `lambda`. The asymptotic per-component penalty is
 $\sigma^2$.
 
-The sum is over $K-1$ optimized classes because the final class is the
-reference class with $w_{Km}=0$. These penalties are currently applied
-component-wise to each optimized cell-type logit.
+The sum is over all $K$ centered cell-type logits, so the smoothing penalty is
+applied symmetrically to the full $K$-dimensional field.
 
 For the 2D triangular lattice, neighbors are the six adjacent triangular
 lattice points, represented by three undirected offset directions:
@@ -444,8 +445,8 @@ $$
 \frac{\exp(w_{km})}{\sum_{\ell=1}^K \exp(w_{\ell m})}
 $$
 
-be the cell-type prior at basis point $m$, with the reference-class logit
-$w_{Km}=0$.
+be the cell-type prior at basis point $m$. The logits $w_{\cdot m}$ are the
+centered basis logits, so no cell type is treated as a reference class.
 
 The implementation supports:
 
@@ -656,7 +657,7 @@ This is a good default for the current model because:
 - `marginals`: posterior transcript probabilities `q[i, k]`
 - `spatial_prior`: fitted spatial priors `p[i, k]`
 - `logits`: interpolated transcript logits `f[i, k]`
-- `basis_weights`: fitted basis coefficients `w[k, m]`
+- `basis_weights`: fitted centered basis coefficients `w[k, m]`
 - `basis_points`: spatial coordinates of lattice basis points
 - `basis_lattice`: integer lattice coordinates
 - `basis_edges`: neighboring basis point graph with physical edge distances
@@ -689,9 +690,6 @@ Remaining limitations include:
   or empirical tuning.
 - Only basis points touched by at least one transcript are included. This is
   efficient, but it means empty regions do not carry explicit field variables.
-- The final cell type is used as the reference class. This is identifiable, but
-  basis coefficients are relative logits rather than symmetric per-cell-type
-  parameters.
 - Optimization is full-batch L-BFGS-B. It is deterministic and uses analytic
   gradients, but very large datasets may need minibatch or GPU-accelerated
   alternatives.

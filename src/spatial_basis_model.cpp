@@ -35,6 +35,28 @@ static inline double log_sum_exp(const std::vector<double>& x) {
     return mx + std::log(total);
 }
 
+static std::vector<double> centered_basis_weights(
+    const NumericVector& par,
+    const int n_basis,
+    const int n_cell_types
+) {
+    std::vector<double> weights(n_basis * n_cell_types, 0.0);
+
+    for (int m = 0; m < n_basis; ++m) {
+        double mean = 0.0;
+        for (int k = 0; k < n_cell_types; ++k) {
+            mean += par[m + n_basis * k];
+        }
+        mean /= static_cast<double>(n_cell_types);
+
+        for (int k = 0; k < n_cell_types; ++k) {
+            weights[m + n_basis * k] = par[m + n_basis * k] - mean;
+        }
+    }
+
+    return weights;
+}
+
 // C++ backend for spatial_basis_segmentation().
 // [[Rcpp::export]]
 List spatial_basis_objective_cpp(
@@ -59,7 +81,6 @@ List spatial_basis_objective_cpp(
     const int n = basis_id.nrow();
     const int n_active = basis_id.ncol();
     const int n_edges = edge_from.size();
-    const int n_free = n_cell_types - 1;
 
     if (basis_weight.nrow() != n || basis_weight.ncol() != n_active) {
         stop("basis_weight must have the same dimensions as basis_id.");
@@ -70,7 +91,7 @@ List spatial_basis_objective_cpp(
     if (log_signature.ncol() != n_cell_types) {
         stop("log_signature must have n_cell_types columns.");
     }
-    if (par.size() != n_basis * n_free) {
+    if (par.size() != n_basis * n_cell_types) {
         stop("par has incompatible length.");
     }
     if (edge_to.size() != n_edges) {
@@ -114,6 +135,11 @@ List spatial_basis_objective_cpp(
 
     const int actual_threads = resolve_threads(n_threads);
     const int n_par = par.size();
+    const std::vector<double> centered_weights = centered_basis_weights(
+        par,
+        n_basis,
+        n_cell_types
+    );
     std::vector<double> objective_by_thread(actual_threads, 0.0);
     std::vector< std::vector<double> > grad_by_thread(
         actual_threads,
@@ -146,8 +172,8 @@ List spatial_basis_objective_cpp(
             const int m = basis_id(i, a);
             const double phi = basis_weight(i, a);
 
-            for (int k = 0; k < n_free; ++k) {
-                f[k] += phi * par[m + n_basis * k];
+            for (int k = 0; k < n_cell_types; ++k) {
+                f[k] += phi * centered_weights[m + n_basis * k];
             }
         }
 
@@ -173,7 +199,7 @@ List spatial_basis_objective_cpp(
             const int m = basis_id(i, a);
             const double phi = basis_weight(i, a);
 
-            for (int k = 0; k < n_free; ++k) {
+            for (int k = 0; k < n_cell_types; ++k) {
                 local_grad[m + n_basis * k] += phi * (p[k] - q[k]);
             }
         }
@@ -183,19 +209,19 @@ List spatial_basis_objective_cpp(
     }
 
     double objective = 0.0;
-    NumericVector grad(n_par);
+    std::vector<double> grad_full(n_par, 0.0);
 
     for (int tid = 0; tid < actual_threads; ++tid) {
         objective += objective_by_thread[tid];
         for (int j = 0; j < n_par; ++j) {
-            grad[j] += grad_by_thread[tid][j];
+            grad_full[j] += grad_by_thread[tid][j];
         }
     }
 
     const double inv_n = 1.0 / static_cast<double>(n);
     objective *= inv_n;
     for (int j = 0; j < n_par; ++j) {
-        grad[j] *= inv_n;
+        grad_full[j] *= inv_n;
     }
 
     if (purity_lambda > 0.0 && purity > 0) {
@@ -205,10 +231,9 @@ List spatial_basis_objective_cpp(
         std::vector<double> d_penalty_d_pi(n_cell_types);
 
         for (int m = 0; m < n_basis; ++m) {
-            for (int k = 0; k < n_free; ++k) {
-                logits[k] = par[m + n_basis * k];
+            for (int k = 0; k < n_cell_types; ++k) {
+                logits[k] = centered_weights[m + n_basis * k];
             }
-            logits[n_free] = 0.0;
 
             const double log_z = log_sum_exp(logits);
             for (int k = 0; k < n_cell_types; ++k) {
@@ -238,8 +263,8 @@ List spatial_basis_objective_cpp(
 
             objective += purity_scale * penalty;
 
-            for (int k = 0; k < n_free; ++k) {
-                grad[m + n_basis * k] += purity_scale * pi[k] *
+            for (int k = 0; k < n_cell_types; ++k) {
+                grad_full[m + n_basis * k] += purity_scale * pi[k] *
                     (d_penalty_d_pi[k] - expected_derivative);
             }
         }
@@ -259,10 +284,10 @@ List spatial_basis_objective_cpp(
                 stop("edge_distance must contain positive finite values.");
             }
 
-            for (int k = 0; k < n_free; ++k) {
+            for (int k = 0; k < n_cell_types; ++k) {
                 const int idx1 = m1 + n_basis * k;
                 const int idx2 = m2 + n_basis * k;
-                const double diff = par[idx1] - par[idx2];
+                const double diff = centered_weights[idx1] - centered_weights[idx2];
                 const double slope = diff / distance;
 
                 double penalty = 0.0;
@@ -291,9 +316,22 @@ List spatial_basis_objective_cpp(
 
                 const double derivative = derivative_wrt_slope / distance;
                 objective += edge_scale * penalty;
-                grad[idx1] += edge_scale * derivative;
-                grad[idx2] -= edge_scale * derivative;
+                grad_full[idx1] += edge_scale * derivative;
+                grad_full[idx2] -= edge_scale * derivative;
             }
+        }
+    }
+
+    NumericVector grad(n_par);
+    for (int m = 0; m < n_basis; ++m) {
+        double mean_grad = 0.0;
+        for (int k = 0; k < n_cell_types; ++k) {
+            mean_grad += grad_full[m + n_basis * k];
+        }
+        mean_grad /= static_cast<double>(n_cell_types);
+
+        for (int k = 0; k < n_cell_types; ++k) {
+            grad[m + n_basis * k] = grad_full[m + n_basis * k] - mean_grad;
         }
     }
 
@@ -317,9 +355,8 @@ List spatial_basis_predict_cpp(
 ) {
     const int n = basis_id.nrow();
     const int n_active = basis_id.ncol();
-    const int n_free = n_cell_types - 1;
 
-    if (par.size() != n_basis * n_free) {
+    if (par.size() != n_basis * n_cell_types) {
         stop("par has incompatible length.");
     }
     if (n_threads < 0) {
@@ -345,6 +382,11 @@ List spatial_basis_predict_cpp(
     NumericMatrix logits(n, n_cell_types);
 
     const int actual_threads = resolve_threads(n_threads);
+    const std::vector<double> centered_weights = centered_basis_weights(
+        par,
+        n_basis,
+        n_cell_types
+    );
 
 #ifdef _OPENMP
 #pragma omp parallel num_threads(actual_threads)
@@ -363,8 +405,8 @@ List spatial_basis_predict_cpp(
             const int m = basis_id(i, a);
             const double phi = basis_weight(i, a);
 
-            for (int k = 0; k < n_free; ++k) {
-                f[k] += phi * par[m + n_basis * k];
+            for (int k = 0; k < n_cell_types; ++k) {
+                f[k] += phi * centered_weights[m + n_basis * k];
             }
         }
 
