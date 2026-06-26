@@ -145,7 +145,7 @@ The basin adjacency table also records:
 
 ## Basin Merging
 
-The first prototype applies a simple agglomerative merge rule.
+The prototype applies an agglomerative merge rule.
 
 Adjacent basins are considered in decreasing saddle-ratio order. Two basins are
 merged when:
@@ -162,14 +162,136 @@ basin_size < min_transcripts_per_cell
 and basin_JS <= posterior_js_threshold
 ```
 
-This merge rule is intentionally simple. It is meant to expose interpretable
-diagnostics first, not to be the final stopping criterion.
+When target cell-type counts are available, the merge rule can also accept
+additional locally plausible merges that improve agreement with the target
+counts. This is enabled by default through:
+
+```r
+use_target_counts = TRUE
+```
+
+For each current component `c`, the posterior-weighted cell-type fraction is:
+
+```text
+f_c[k] = posterior_mass_c[k] / sum_l posterior_mass_c[l]
+```
+
+The current inferred number of cells of type `k` is:
+
+```text
+N_current[k] = sum_c f_c[k]
+```
+
+The count loss is:
+
+```text
+count_loss = sum_k ((N_current[k] - N_hat[k]) / sd_target[k])^2
+```
+
+where the default target scale is:
+
+```text
+sd_target[k] = sqrt(max(N_hat[k], 1))
+```
+
+A merge that does not pass the stronger local merge thresholds can still be
+accepted when:
+
+```text
+saddle_ratio >= target_merge_saddle_ratio
+basin_JS <= target_merge_posterior_js
+count_loss_after < count_loss_before
+```
+
+By default, only current watershed components with at least
+`prior_min_transcripts_per_cell` transcripts contribute to `N_current[k]` in the
+target-count loss. This matches the filtering used to estimate `N_hat[k]` from
+the prior `cell_id` segmentation. The threshold can be changed with:
+
+```r
+target_min_transcripts_per_cell
+```
+
+This makes the target count estimate a soft guide. It can reduce over-splitting
+when many locally plausible basins remain, but it does not force mergers across
+very low-density or posterior-incompatible boundaries.
+
+## Upper Cell-Size Guardrail
+
+The target-count loss can still produce poor partitions when a few very large
+merged regions compensate for many smaller fragments. To guard against this,
+the merge rule can use type-specific upper transcript-count limits.
+
+When `use_size_limits = TRUE`, and explicit `cell_size_limits` are not supplied,
+limits are estimated from reliable prior cells:
+
+```text
+n_c >= prior_min_transcripts_per_cell
+```
+
+For each prior cell, the posterior type fraction is:
+
+```text
+f_c[k] = posterior_mass_c[k] / sum_l posterior_mass_c[l]
+```
+
+The prior cell contributes to size-limit estimation only for its dominant type,
+and only if:
+
+```text
+max_k f_c[k] >= size_limit_purity_threshold
+```
+
+The default threshold is:
+
+```r
+size_limit_purity_threshold = 0.8
+```
+
+For each type, the upper transcript-count limit is estimated as:
+
+```text
+quantile(n_c, size_limit_upper_quantile)
+```
+
+with default:
+
+```r
+size_limit_upper_quantile = 0.99
+```
+
+If a type has fewer than `size_limit_min_cells_per_type` high-purity prior
+cells, its limit is shrunk toward the global high-purity prior-cell limit.
+
+During merging, the candidate merged component has posterior type profile
+`p_merge[k]`. Its type-weighted size limit is:
+
+```text
+sum_k p_merge[k] max_transcripts_k
+```
+
+The merge is blocked when:
+
+```text
+merged_transcripts >
+  size_limit_slack * sum_k p_merge[k] max_transcripts_k
+```
+
+The default slack is:
+
+```r
+size_limit_slack = 1.25
+```
+
+This guardrail is deliberately one-sided: it discourages implausibly large
+merged cells without teaching the algorithm that small cells or fragments are
+necessarily invalid.
 
 Future versions can replace this rule with an objective that combines:
 
 - density prominence
 - posterior compatibility
-- expected transcript count per cell
+- transcript count and spatial extent priors
 - prior cell-count calibration
 - shape or compactness penalties
 
@@ -241,6 +363,13 @@ The prototype returns:
 - `edges`: transcript graph edges with posterior divergence
 - `basin_adjacency`: boundary/saddle diagnostics between initial basins
 - `merge_history`: accepted basin merges
+- `count_trajectory`: posterior-weighted cell-type counts after target-aware
+  merge steps
+- `target_cell_type_counts`: target counts used by the merge rule, if any
+- `cell_size_limits`: normalized type-specific upper transcript-count limits
+  used by the merge rule, if any
+- `prior_cell_size_limits`: size-limit calibration table estimated from prior
+  cells, if available
 - `cells`: summary of final cells
 - `initial_basins`: summary of initial basins
 - `prior_cell_type_counts`: optional prior-cell calibration table

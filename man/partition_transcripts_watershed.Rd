@@ -20,6 +20,18 @@ partition_transcripts_watershed(
   saddle_ratio_threshold = 0.7,
   posterior_js_threshold = 0.2,
   min_transcripts_per_cell = 5L,
+  use_target_counts = TRUE,
+  target_cell_type_counts = NULL,
+  target_count_sd = NULL,
+  target_merge_saddle_ratio = 0.3,
+  target_merge_posterior_js = 0.4,
+  target_min_transcripts_per_cell = NULL,
+  use_size_limits = TRUE,
+  cell_size_limits = NULL,
+  size_limit_purity_threshold = 0.8,
+  size_limit_upper_quantile = 0.99,
+  size_limit_min_cells_per_type = 20L,
+  size_limit_slack = 1.25,
   cell_id = "cell_id",
   unassigned = "UNASSIGNED",
   prior_min_transcripts_per_cell = 10L,
@@ -61,6 +73,48 @@ compatible basin merges.}
 
 \item{min_transcripts_per_cell}{Basins smaller than this are merged into a
 compatible neighbor when possible.}
+
+\item{use_target_counts}{Logical; if \code{TRUE}, use estimated or supplied
+cell-type target counts to accept additional locally plausible merges that
+reduce posterior-weighted count loss.}
+
+\item{target_cell_type_counts}{Optional numeric vector or data frame of
+target cell counts by cell type. If \code{NULL}, the function uses the prior
+\code{cell_id} calibration when available.}
+
+\item{target_count_sd}{Optional positive scale for each target count. If
+\code{NULL}, uses \code{sqrt(max(target, 1))}.}
+
+\item{target_merge_saddle_ratio}{Minimum saddle ratio for target-count-guided
+merges.}
+
+\item{target_merge_posterior_js}{Maximum basin posterior Jensen-Shannon
+divergence for target-count-guided merges.}
+
+\item{target_min_transcripts_per_cell}{Minimum transcript count for watershed
+components to be counted in the target-count merge loss. If \code{NULL}, uses
+\code{prior_min_transcripts_per_cell} so prior target estimation and new-cell
+counting use the same transcript-count filter.}
+
+\item{use_size_limits}{Logical; if \code{TRUE}, estimate or use type-specific
+upper transcript-count limits and block merges that would create
+implausibly large cells.}
+
+\item{cell_size_limits}{Optional numeric vector or data frame with
+\code{cell_type} and \code{max_transcripts} columns. If \code{NULL}, limits are estimated
+from high-purity reliable prior cells when possible.}
+
+\item{size_limit_purity_threshold}{Minimum dominant posterior fraction for a
+prior cell to contribute to size-limit estimation.}
+
+\item{size_limit_upper_quantile}{Upper quantile of prior-cell transcript
+counts used as the per-type size limit.}
+
+\item{size_limit_min_cells_per_type}{Minimum high-purity prior cells before a
+type-specific limit is trusted without shrinkage to the global limit.}
+
+\item{size_limit_slack}{Multiplicative slack applied to type-weighted size
+limits during merging.}
 
 \item{cell_id}{Character prior cell ID column used only for count
 calibration diagnostics.}
