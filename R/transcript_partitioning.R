@@ -51,7 +51,7 @@ build_transcript_knn_edges <- function(coords, n_neighbors, max_distance = Inf) 
 
     lo = pmin(from, to)
     hi = pmax(from, to)
-    key = paste(lo, hi, sep = ":")
+    key = lo * (n + 1) + hi
     ord = order(key, distance)
     lo = lo[ord]
     hi = hi[ord]
