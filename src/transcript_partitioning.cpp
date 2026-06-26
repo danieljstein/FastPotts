@@ -1,0 +1,385 @@
+// [[Rcpp::depends(Rcpp)]]
+#include <Rcpp.h>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <unordered_map>
+#include <vector>
+using namespace Rcpp;
+
+static inline std::uint64_t basin_pair_key(const int a0, const int b0) {
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(a0)) << 32) |
+        static_cast<std::uint32_t>(b0);
+}
+
+static inline double safe_prob(const double x, const double eps) {
+    return x < eps ? eps : x;
+}
+
+static double js_rows(
+    const NumericMatrix& posterior,
+    const int i0,
+    const int j0,
+    const double eps
+) {
+    const int K = posterior.ncol();
+    double p_sum = 0.0;
+    double q_sum = 0.0;
+
+    for (int k = 0; k < K; ++k) {
+        p_sum += safe_prob(posterior(i0, k), eps);
+        q_sum += safe_prob(posterior(j0, k), eps);
+    }
+
+    double js = 0.0;
+    for (int k = 0; k < K; ++k) {
+        const double p = safe_prob(posterior(i0, k), eps) / p_sum;
+        const double q = safe_prob(posterior(j0, k), eps) / q_sum;
+        const double m = 0.5 * (p + q);
+        js += 0.5 * p * std::log(p / m) + 0.5 * q * std::log(q / m);
+    }
+    return js;
+}
+
+static int find_root(std::vector<int>& parent, int x) {
+    int root = x;
+    while (parent[root] != root) {
+        root = parent[root];
+    }
+    while (parent[x] != x) {
+        const int next = parent[x];
+        parent[x] = root;
+        x = next;
+    }
+    return root;
+}
+
+//' Estimate graph transcript density
+//'
+//' Internal C++ helper for `partition_transcripts_watershed()`.
+//'
+//' @keywords internal
+// [[Rcpp::export]]
+NumericVector estimate_graph_density_cpp(
+    const IntegerVector& from,
+    const IntegerVector& to,
+    const NumericVector& distance,
+    const NumericMatrix& posterior,
+    const double bandwidth,
+    const int mode
+) {
+    const int n = posterior.nrow();
+    const int K = posterior.ncol();
+    const R_xlen_t E = from.size();
+
+    if (to.size() != E || distance.size() != E) {
+        stop("from, to, and distance must have the same length.");
+    }
+    if (!R_finite(bandwidth) || bandwidth <= 0.0) {
+        stop("bandwidth must be positive and finite.");
+    }
+
+    NumericVector density(n);
+
+    if (mode == 1) {
+        std::fill(density.begin(), density.end(), 1.0);
+        for (R_xlen_t e = 0; e < E; ++e) {
+            const int a = from[e] - 1;
+            const int b = to[e] - 1;
+            const double r = distance[e] / bandwidth;
+            const double kernel = std::exp(-0.5 * r * r);
+            density[a] += kernel;
+            density[b] += kernel;
+        }
+        return density;
+    }
+
+    NumericMatrix type_density(clone(posterior));
+    for (R_xlen_t e = 0; e < E; ++e) {
+        const int a = from[e] - 1;
+        const int b = to[e] - 1;
+        const double r = distance[e] / bandwidth;
+        const double kernel = std::exp(-0.5 * r * r);
+
+        for (int k = 0; k < K; ++k) {
+            type_density(a, k) += kernel * posterior(b, k);
+            type_density(b, k) += kernel * posterior(a, k);
+        }
+    }
+
+    for (int i = 0; i < n; ++i) {
+        double value = 0.0;
+        for (int k = 0; k < K; ++k) {
+            value += posterior(i, k) * type_density(i, k);
+        }
+        density[i] = value;
+    }
+
+    return density;
+}
+
+//' Compute edge-level posterior Jensen-Shannon divergence
+//'
+//' Internal C++ helper for `partition_transcripts_watershed()`.
+//'
+//' @keywords internal
+// [[Rcpp::export]]
+NumericVector posterior_js_divergence_edges_cpp(
+    const NumericMatrix& posterior,
+    const IntegerVector& from,
+    const IntegerVector& to,
+    const double eps = 1e-12
+) {
+    const R_xlen_t E = from.size();
+    if (to.size() != E) {
+        stop("from and to must have the same length.");
+    }
+
+    NumericVector out(E);
+    for (R_xlen_t e = 0; e < E; ++e) {
+        out[e] = js_rows(posterior, from[e] - 1, to[e] - 1, eps);
+    }
+    return out;
+}
+
+//' Assign graph nodes to density modes by ascent
+//'
+//' Internal C++ helper for `partition_transcripts_watershed()`.
+//'
+//' @keywords internal
+// [[Rcpp::export]]
+List density_ascent_partition_cpp(
+    const IntegerVector& from,
+    const IntegerVector& to,
+    const NumericVector& distance,
+    const NumericVector& density,
+    const NumericVector& posterior_js,
+    const double distance_weight,
+    const double posterior_weight
+) {
+    const int n = density.size();
+    const R_xlen_t E = from.size();
+    if (to.size() != E || distance.size() != E || posterior_js.size() != E) {
+        stop("from, to, distance, and posterior_js must have the same length.");
+    }
+
+    std::vector<int> parent(n);
+    std::vector<double> best_score(n, -std::numeric_limits<double>::infinity());
+    for (int i = 0; i < n; ++i) {
+        parent[i] = i;
+    }
+
+    auto update_parent = [&](const int i, const int j, const double dist, const double js) {
+        if (density[j] <= density[i]) {
+            return;
+        }
+        const double score = (density[j] - density[i]) -
+            distance_weight * dist -
+            posterior_weight * js;
+        if (score > best_score[i]) {
+            best_score[i] = score;
+            parent[i] = j;
+        }
+    };
+
+    for (R_xlen_t e = 0; e < E; ++e) {
+        const int a = from[e] - 1;
+        const int b = to[e] - 1;
+        update_parent(a, b, distance[e], posterior_js[e]);
+        update_parent(b, a, distance[e], posterior_js[e]);
+    }
+
+    std::vector<int> roots(n);
+    std::vector<int> unique_roots;
+    unique_roots.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        roots[i] = find_root(parent, i);
+        unique_roots.push_back(roots[i]);
+    }
+
+    std::sort(unique_roots.begin(), unique_roots.end());
+    unique_roots.erase(std::unique(unique_roots.begin(), unique_roots.end()), unique_roots.end());
+
+    IntegerVector parent_out(n);
+    IntegerVector basin(n);
+    for (int i = 0; i < n; ++i) {
+        parent_out[i] = parent[i] + 1;
+        basin[i] = static_cast<int>(
+            std::lower_bound(unique_roots.begin(), unique_roots.end(), roots[i]) - unique_roots.begin()
+        ) + 1;
+    }
+
+    return List::create(
+        _["parent"] = parent_out,
+        _["basin"] = basin
+    );
+}
+
+struct BasinPairStats {
+    int a;
+    int b;
+    int edge_count;
+    double saddle_density;
+    double distance_sum;
+    double min_distance;
+    double edge_js_sum;
+
+    BasinPairStats() :
+        a(0),
+        b(0),
+        edge_count(0),
+        saddle_density(-std::numeric_limits<double>::infinity()),
+        distance_sum(0.0),
+        min_distance(std::numeric_limits<double>::infinity()),
+        edge_js_sum(0.0) {}
+};
+
+//' Build basin adjacency and saddle diagnostics
+//'
+//' Internal C++ helper for `partition_transcripts_watershed()`.
+//'
+//' @keywords internal
+// [[Rcpp::export]]
+DataFrame build_basin_adjacency_cpp(
+    const IntegerVector& from,
+    const IntegerVector& to,
+    const NumericVector& distance,
+    const IntegerVector& basin,
+    const NumericVector& density,
+    const NumericMatrix& posterior,
+    const NumericVector& posterior_js,
+    const double eps = 1e-12
+) {
+    const int n = basin.size();
+    const int K = posterior.ncol();
+    const R_xlen_t E = from.size();
+    if (to.size() != E || distance.size() != E || posterior_js.size() != E) {
+        stop("from, to, distance, and posterior_js must have the same length.");
+    }
+    if (density.size() != n || posterior.nrow() != n) {
+        stop("basin, density, and posterior dimensions are inconsistent.");
+    }
+
+    int B = 0;
+    for (int i = 0; i < n; ++i) {
+        if (basin[i] > B) {
+            B = basin[i];
+        }
+    }
+
+    std::vector<double> mode_density(B, -std::numeric_limits<double>::infinity());
+    std::vector<double> posterior_sum(static_cast<std::size_t>(B) * K, 0.0);
+    std::vector<double> posterior_total(B, 0.0);
+
+    for (int i = 0; i < n; ++i) {
+        const int b = basin[i] - 1;
+        if (density[i] > mode_density[b]) {
+            mode_density[b] = density[i];
+        }
+        for (int k = 0; k < K; ++k) {
+            const double value = posterior(i, k);
+            posterior_sum[static_cast<std::size_t>(b) * K + k] += value;
+            posterior_total[b] += value;
+        }
+    }
+
+    std::unordered_map<std::uint64_t, BasinPairStats> stats;
+    stats.reserve(static_cast<std::size_t>(E / 4 + 1));
+
+    for (R_xlen_t e = 0; e < E; ++e) {
+        int a = basin[from[e] - 1] - 1;
+        int b = basin[to[e] - 1] - 1;
+        if (a == b) {
+            continue;
+        }
+        if (a > b) {
+            std::swap(a, b);
+        }
+
+        const std::uint64_t key = basin_pair_key(a, b);
+        auto it = stats.find(key);
+        if (it == stats.end()) {
+            BasinPairStats init;
+            init.a = a;
+            init.b = b;
+            it = stats.emplace(key, init).first;
+        }
+
+        BasinPairStats& s = it->second;
+        const double saddle = std::min(density[from[e] - 1], density[to[e] - 1]);
+        s.edge_count += 1;
+        if (saddle > s.saddle_density) {
+            s.saddle_density = saddle;
+        }
+        s.distance_sum += distance[e];
+        if (distance[e] < s.min_distance) {
+            s.min_distance = distance[e];
+        }
+        s.edge_js_sum += posterior_js[e];
+    }
+
+    std::vector<BasinPairStats> rows;
+    rows.reserve(stats.size());
+    for (const auto& kv : stats) {
+        rows.push_back(kv.second);
+    }
+    std::sort(
+        rows.begin(),
+        rows.end(),
+        [](const BasinPairStats& lhs, const BasinPairStats& rhs) {
+            if (lhs.a != rhs.a) return lhs.a < rhs.a;
+            return lhs.b < rhs.b;
+        }
+    );
+
+    const int R = rows.size();
+    IntegerVector basin_a(R);
+    IntegerVector basin_b(R);
+    IntegerVector edge_count(R);
+    NumericVector saddle_density(R);
+    NumericVector saddle_ratio(R);
+    NumericVector mean_distance(R);
+    NumericVector min_distance(R);
+    NumericVector mean_edge_js(R);
+    NumericVector basin_js(R);
+
+    for (int r = 0; r < R; ++r) {
+        const BasinPairStats& s = rows[r];
+        basin_a[r] = s.a + 1;
+        basin_b[r] = s.b + 1;
+        edge_count[r] = s.edge_count;
+        saddle_density[r] = s.saddle_density;
+        saddle_ratio[r] = s.saddle_density / std::min(mode_density[s.a], mode_density[s.b]);
+        mean_distance[r] = s.distance_sum / s.edge_count;
+        min_distance[r] = s.min_distance;
+        mean_edge_js[r] = s.edge_js_sum / s.edge_count;
+
+        double js = 0.0;
+        for (int k = 0; k < K; ++k) {
+            const double p = safe_prob(
+                posterior_sum[static_cast<std::size_t>(s.a) * K + k] / posterior_total[s.a],
+                eps
+            );
+            const double q = safe_prob(
+                posterior_sum[static_cast<std::size_t>(s.b) * K + k] / posterior_total[s.b],
+                eps
+            );
+            const double m = 0.5 * (p + q);
+            js += 0.5 * p * std::log(p / m) + 0.5 * q * std::log(q / m);
+        }
+        basin_js[r] = js;
+    }
+
+    return DataFrame::create(
+        _["basin_a"] = basin_a,
+        _["basin_b"] = basin_b,
+        _["edge_count"] = edge_count,
+        _["saddle_density"] = saddle_density,
+        _["saddle_ratio"] = saddle_ratio,
+        _["mean_distance"] = mean_distance,
+        _["min_distance"] = min_distance,
+        _["mean_edge_js"] = mean_edge_js,
+        _["basin_js"] = basin_js
+    );
+}

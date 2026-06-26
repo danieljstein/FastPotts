@@ -171,6 +171,71 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// estimate_graph_density_cpp
+NumericVector estimate_graph_density_cpp(const IntegerVector& from, const IntegerVector& to, const NumericVector& distance, const NumericMatrix& posterior, const double bandwidth, const int mode);
+RcppExport SEXP _FastPotts_estimate_graph_density_cpp(SEXP fromSEXP, SEXP toSEXP, SEXP distanceSEXP, SEXP posteriorSEXP, SEXP bandwidthSEXP, SEXP modeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerVector& >::type from(fromSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type to(toSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type distance(distanceSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type posterior(posteriorSEXP);
+    Rcpp::traits::input_parameter< const double >::type bandwidth(bandwidthSEXP);
+    Rcpp::traits::input_parameter< const int >::type mode(modeSEXP);
+    rcpp_result_gen = Rcpp::wrap(estimate_graph_density_cpp(from, to, distance, posterior, bandwidth, mode));
+    return rcpp_result_gen;
+END_RCPP
+}
+// posterior_js_divergence_edges_cpp
+NumericVector posterior_js_divergence_edges_cpp(const NumericMatrix& posterior, const IntegerVector& from, const IntegerVector& to, const double eps);
+RcppExport SEXP _FastPotts_posterior_js_divergence_edges_cpp(SEXP posteriorSEXP, SEXP fromSEXP, SEXP toSEXP, SEXP epsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type posterior(posteriorSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type from(fromSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type to(toSEXP);
+    Rcpp::traits::input_parameter< const double >::type eps(epsSEXP);
+    rcpp_result_gen = Rcpp::wrap(posterior_js_divergence_edges_cpp(posterior, from, to, eps));
+    return rcpp_result_gen;
+END_RCPP
+}
+// density_ascent_partition_cpp
+List density_ascent_partition_cpp(const IntegerVector& from, const IntegerVector& to, const NumericVector& distance, const NumericVector& density, const NumericVector& posterior_js, const double distance_weight, const double posterior_weight);
+RcppExport SEXP _FastPotts_density_ascent_partition_cpp(SEXP fromSEXP, SEXP toSEXP, SEXP distanceSEXP, SEXP densitySEXP, SEXP posterior_jsSEXP, SEXP distance_weightSEXP, SEXP posterior_weightSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerVector& >::type from(fromSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type to(toSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type distance(distanceSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type density(densitySEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type posterior_js(posterior_jsSEXP);
+    Rcpp::traits::input_parameter< const double >::type distance_weight(distance_weightSEXP);
+    Rcpp::traits::input_parameter< const double >::type posterior_weight(posterior_weightSEXP);
+    rcpp_result_gen = Rcpp::wrap(density_ascent_partition_cpp(from, to, distance, density, posterior_js, distance_weight, posterior_weight));
+    return rcpp_result_gen;
+END_RCPP
+}
+// build_basin_adjacency_cpp
+DataFrame build_basin_adjacency_cpp(const IntegerVector& from, const IntegerVector& to, const NumericVector& distance, const IntegerVector& basin, const NumericVector& density, const NumericMatrix& posterior, const NumericVector& posterior_js, const double eps);
+RcppExport SEXP _FastPotts_build_basin_adjacency_cpp(SEXP fromSEXP, SEXP toSEXP, SEXP distanceSEXP, SEXP basinSEXP, SEXP densitySEXP, SEXP posteriorSEXP, SEXP posterior_jsSEXP, SEXP epsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerVector& >::type from(fromSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type to(toSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type distance(distanceSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type basin(basinSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type density(densitySEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type posterior(posteriorSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type posterior_js(posterior_jsSEXP);
+    Rcpp::traits::input_parameter< const double >::type eps(epsSEXP);
+    rcpp_result_gen = Rcpp::wrap(build_basin_adjacency_cpp(from, to, distance, basin, density, posterior, posterior_js, eps));
+    return rcpp_result_gen;
+END_RCPP
+}
 // tri_barycentric_cpp
 List tri_barycentric_cpp(const NumericMatrix& coords, const double s, const NumericVector& origin, const double tol, const int n_threads);
 RcppExport SEXP _FastPotts_tri_barycentric_cpp(SEXP coordsSEXP, SEXP sSEXP, SEXP originSEXP, SEXP tolSEXP, SEXP n_threadsSEXP) {
@@ -198,6 +263,10 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_potts_lbp_parallel_cpp", (DL_FUNC) &_FastPotts_potts_lbp_parallel_cpp, 10},
     {"_FastPotts_spatial_basis_objective_cpp", (DL_FUNC) &_FastPotts_spatial_basis_objective_cpp, 17},
     {"_FastPotts_spatial_basis_predict_cpp", (DL_FUNC) &_FastPotts_spatial_basis_predict_cpp, 8},
+    {"_FastPotts_estimate_graph_density_cpp", (DL_FUNC) &_FastPotts_estimate_graph_density_cpp, 6},
+    {"_FastPotts_posterior_js_divergence_edges_cpp", (DL_FUNC) &_FastPotts_posterior_js_divergence_edges_cpp, 4},
+    {"_FastPotts_density_ascent_partition_cpp", (DL_FUNC) &_FastPotts_density_ascent_partition_cpp, 7},
+    {"_FastPotts_build_basin_adjacency_cpp", (DL_FUNC) &_FastPotts_build_basin_adjacency_cpp, 8},
     {"_FastPotts_tri_barycentric_cpp", (DL_FUNC) &_FastPotts_tri_barycentric_cpp, 5},
     {NULL, NULL, 0}
 };

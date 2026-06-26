@@ -2,7 +2,9 @@
 
 export(bcc_barycentric)
 export(build_potts_lbp_graph)
+export(estimate_prior_cell_type_counts)
 export(hilbert_index)
+export(partition_transcripts_watershed)
 export(potts_lbp_cpp)
 export(potts_lbp_parallel_cpp)
 export(profile_run_crf)

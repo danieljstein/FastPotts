@@ -298,6 +298,42 @@ spatial_basis_predict_cpp <- function(par, basis_id, basis_weight, gene_index, l
     .Call(`_FastPotts_spatial_basis_predict_cpp`, par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types)
 }
 
+#' Estimate graph transcript density
+#'
+#' Internal C++ helper for `partition_transcripts_watershed()`.
+#'
+#' @keywords internal
+estimate_graph_density_cpp <- function(from, to, distance, posterior, bandwidth, mode) {
+    .Call(`_FastPotts_estimate_graph_density_cpp`, from, to, distance, posterior, bandwidth, mode)
+}
+
+#' Compute edge-level posterior Jensen-Shannon divergence
+#'
+#' Internal C++ helper for `partition_transcripts_watershed()`.
+#'
+#' @keywords internal
+posterior_js_divergence_edges_cpp <- function(posterior, from, to, eps = 1e-12) {
+    .Call(`_FastPotts_posterior_js_divergence_edges_cpp`, posterior, from, to, eps)
+}
+
+#' Assign graph nodes to density modes by ascent
+#'
+#' Internal C++ helper for `partition_transcripts_watershed()`.
+#'
+#' @keywords internal
+density_ascent_partition_cpp <- function(from, to, distance, density, posterior_js, distance_weight, posterior_weight) {
+    .Call(`_FastPotts_density_ascent_partition_cpp`, from, to, distance, density, posterior_js, distance_weight, posterior_weight)
+}
+
+#' Build basin adjacency and saddle diagnostics
+#'
+#' Internal C++ helper for `partition_transcripts_watershed()`.
+#'
+#' @keywords internal
+build_basin_adjacency_cpp <- function(from, to, distance, basin, density, posterior, posterior_js, eps = 1e-12) {
+    .Call(`_FastPotts_build_basin_adjacency_cpp`, from, to, distance, basin, density, posterior, posterior_js, eps)
+}
+
 tri_barycentric_cpp <- function(coords, s, origin, tol = 1e-10, n_threads = 0L) {
     .Call(`_FastPotts_tri_barycentric_cpp`, coords, s, origin, tol, n_threads)
 }
