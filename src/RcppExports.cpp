@@ -226,6 +226,44 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// spatial_log_density_objective_cpp
+List spatial_log_density_objective_cpp(const NumericVector& par, const IntegerMatrix& obs_basis_id, const NumericMatrix& obs_basis_weight, const IntegerMatrix& quad_basis_id, const NumericMatrix& quad_basis_weight, const NumericVector& quad_weight, const IntegerVector& edge_from, const IntegerVector& edge_to, const NumericVector& edge_distance, const double lambda, const int regularization, const double delta, const double sigma, const int n_threads);
+RcppExport SEXP _FastPotts_spatial_log_density_objective_cpp(SEXP parSEXP, SEXP obs_basis_idSEXP, SEXP obs_basis_weightSEXP, SEXP quad_basis_idSEXP, SEXP quad_basis_weightSEXP, SEXP quad_weightSEXP, SEXP edge_fromSEXP, SEXP edge_toSEXP, SEXP edge_distanceSEXP, SEXP lambdaSEXP, SEXP regularizationSEXP, SEXP deltaSEXP, SEXP sigmaSEXP, SEXP n_threadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericVector& >::type par(parSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type obs_basis_id(obs_basis_idSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type obs_basis_weight(obs_basis_weightSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type quad_basis_id(quad_basis_idSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type quad_basis_weight(quad_basis_weightSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type quad_weight(quad_weightSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type edge_from(edge_fromSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type edge_to(edge_toSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type edge_distance(edge_distanceSEXP);
+    Rcpp::traits::input_parameter< const double >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< const int >::type regularization(regularizationSEXP);
+    Rcpp::traits::input_parameter< const double >::type delta(deltaSEXP);
+    Rcpp::traits::input_parameter< const double >::type sigma(sigmaSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_threads(n_threadsSEXP);
+    rcpp_result_gen = Rcpp::wrap(spatial_log_density_objective_cpp(par, obs_basis_id, obs_basis_weight, quad_basis_id, quad_basis_weight, quad_weight, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, n_threads));
+    return rcpp_result_gen;
+END_RCPP
+}
+// spatial_log_density_predict_cpp
+List spatial_log_density_predict_cpp(const NumericVector& par, const IntegerMatrix& basis_id, const NumericMatrix& basis_weight, const int n_threads);
+RcppExport SEXP _FastPotts_spatial_log_density_predict_cpp(SEXP parSEXP, SEXP basis_idSEXP, SEXP basis_weightSEXP, SEXP n_threadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericVector& >::type par(parSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type basis_id(basis_idSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type basis_weight(basis_weightSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_threads(n_threadsSEXP);
+    rcpp_result_gen = Rcpp::wrap(spatial_log_density_predict_cpp(par, basis_id, basis_weight, n_threads));
+    return rcpp_result_gen;
+END_RCPP
+}
 // estimate_graph_density_cpp
 NumericVector estimate_graph_density_cpp(const IntegerVector& from, const IntegerVector& to, const NumericVector& distance, const NumericMatrix& posterior, const double bandwidth, const int mode);
 RcppExport SEXP _FastPotts_estimate_graph_density_cpp(SEXP fromSEXP, SEXP toSEXP, SEXP distanceSEXP, SEXP posteriorSEXP, SEXP bandwidthSEXP, SEXP modeSEXP) {
@@ -320,6 +358,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_spatial_basis_predict_cpp", (DL_FUNC) &_FastPotts_spatial_basis_predict_cpp, 8},
     {"_FastPotts_spatial_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_density_objective_cpp, 24},
     {"_FastPotts_spatial_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_density_predict_cpp, 11},
+    {"_FastPotts_spatial_log_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_objective_cpp, 14},
+    {"_FastPotts_spatial_log_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_predict_cpp, 4},
     {"_FastPotts_estimate_graph_density_cpp", (DL_FUNC) &_FastPotts_estimate_graph_density_cpp, 6},
     {"_FastPotts_posterior_js_divergence_edges_cpp", (DL_FUNC) &_FastPotts_posterior_js_divergence_edges_cpp, 4},
     {"_FastPotts_density_ascent_partition_cpp", (DL_FUNC) &_FastPotts_density_ascent_partition_cpp, 7},
