@@ -49,6 +49,108 @@ make_density_quadrature_grid <- function(coords, n, expansion = 0.02) {
     list(coords = grid, weight = quad_weight, bounds = rbind(min = mins, max = maxs))
 }
 
+simplex_quadrature_rule <- function(d, subdivision) {
+    if (length(subdivision) != 1L || !is.finite(subdivision) || subdivision < 1L) {
+        stop("quadrature_subdivision must be a positive integer.", call. = FALSE)
+    }
+    m = as.integer(subdivision)
+
+    if (d == 2L) {
+        lambda = matrix(NA_real_, nrow = m * m, ncol = 3L)
+        row = 1L
+        for (i in 0:(m - 1L)) {
+            for (j in 0:(m - 1L - i)) {
+                u = (i + 1 / 3) / m
+                v = (j + 1 / 3) / m
+                lambda[row, ] = c(1 - u - v, u, v)
+                row = row + 1L
+                if (i + j <= m - 2L) {
+                    u = (i + 2 / 3) / m
+                    v = (j + 2 / 3) / m
+                    lambda[row, ] = c(1 - u - v, u, v)
+                    row = row + 1L
+                }
+            }
+        }
+        return(list(lambda = lambda, weight = rep(1 / nrow(lambda), nrow(lambda))))
+    }
+
+    if (d == 3L) {
+        lambda = matrix(NA_real_, nrow = m^3, ncol = 4L)
+        weight = numeric(nrow(lambda))
+        row = 1L
+        for (i in 0:(m - 1L)) {
+            u = (i + 0.5) / m
+            for (j in 0:(m - 1L)) {
+                v = (j + 0.5) / m
+                for (h in 0:(m - 1L)) {
+                    w = (h + 0.5) / m
+                    lambda[row, ] = c(
+                        1 - u,
+                        u * (1 - v),
+                        u * v * (1 - w),
+                        u * v * w
+                    )
+                    weight[row] = u^2 * v
+                    row = row + 1L
+                }
+            }
+        }
+        weight = weight / sum(weight)
+        return(list(lambda = lambda, weight = weight))
+    }
+
+    stop("Unsupported simplex dimension.", call. = FALSE)
+}
+
+simplex_volume <- function(vertices) {
+    d = ncol(vertices)
+    edge_matrix = sweep(vertices[-1L, , drop = FALSE], 2L, vertices[1L, ], "-")
+    abs(det(edge_matrix)) / factorial(d)
+}
+
+make_density_quadrature_simplex <- function(design, d, subdivision) {
+    rule = simplex_quadrature_rule(d, subdivision)
+    simplex_key = apply(design$basis_id, 1L, paste, collapse = ":")
+    first = match(unique(simplex_key), simplex_key)
+    simplex_basis_id = design$basis_id[first, , drop = FALSE]
+    n_simplex = nrow(simplex_basis_id)
+    n_rule = nrow(rule$lambda)
+
+    quad_n = n_simplex * n_rule
+    quad_basis_id = matrix(NA_integer_, nrow = quad_n, ncol = ncol(simplex_basis_id))
+    quad_basis_weight = matrix(NA_real_, nrow = quad_n, ncol = ncol(simplex_basis_id))
+    quad_coords = matrix(NA_real_, nrow = quad_n, ncol = d)
+    quad_weight = numeric(quad_n)
+
+    row_start = 1L
+    for (j in seq_len(n_simplex)) {
+        ids = simplex_basis_id[j, ]
+        vertices = design$basis_points[ids, , drop = FALSE]
+        volume = simplex_volume(vertices)
+        idx = row_start:(row_start + n_rule - 1L)
+        quad_basis_id[idx, ] = matrix(ids, nrow = n_rule, ncol = length(ids), byrow = TRUE)
+        quad_basis_weight[idx, ] = rule$lambda
+        quad_coords[idx, ] = rule$lambda %*% vertices
+        quad_weight[idx] = volume * rule$weight
+        row_start = row_start + n_rule
+    }
+
+    list(
+        coords = quad_coords,
+        weight = quad_weight,
+        basis_id = quad_basis_id,
+        basis_weight = quad_basis_weight,
+        bounds = rbind(
+            min = apply(quad_coords, 2L, min),
+            max = apply(quad_coords, 2L, max)
+        ),
+        method = "simplex",
+        subdivision = as.integer(subdivision),
+        n_simplex = n_simplex
+    )
+}
+
 normalize_density_floor <- function(density_floor, cell_types) {
     if (length(density_floor) == 1L) {
         density_floor = rep(density_floor, length(cell_types))
@@ -84,8 +186,8 @@ normalize_density_floor <- function(density_floor, cell_types) {
 #' }
 #'
 #' The objective is a posterior-weighted inhomogeneous Poisson point-process
-#' likelihood with a regular-grid quadrature approximation over the coordinate
-#' bounding box.
+#' likelihood with either occupied-simplex quadrature or a regular-grid
+#' quadrature approximation.
 #'
 #' @param transcripts_df Transcript-level data frame.
 #' @param posterior Numeric transcript-by-cell-type posterior probability
@@ -94,10 +196,17 @@ normalize_density_floor <- function(density_floor, cell_types) {
 #' @param s Positive spatial basis mesh size.
 #' @param x,y,z Character coordinate column names.
 #' @param origin Optional lattice origin.
+#' @param quadrature_method Character; `"simplex"` uses occupied-simplex
+#'   quadrature, while `"grid"` uses a regular grid over the coordinate
+#'   bounding box.
+#' @param quadrature_subdivision Positive integer subdivision factor for
+#'   occupied-simplex quadrature. In 2D this creates `m^2` equal-area
+#'   quadrature points per occupied triangle. In 3D this creates `m^3`
+#'   Duffy-midpoint quadrature points per occupied tetrahedron.
 #' @param quadrature_n Approximate number of quadrature points over the
-#'   coordinate bounding box.
-#' @param quadrature_expansion Fractional bounding-box expansion used for
-#'   quadrature.
+#'   coordinate bounding box when `quadrature_method = "grid"`.
+#' @param quadrature_expansion Fractional bounding-box expansion used when
+#'   `quadrature_method = "grid"`.
 #' @param density_floor Scalar or vector floor multiplier in `[0, 1)`. A value
 #'   of `0.05` means boundary attenuation can reduce density to 5 percent of
 #'   the baseline.
@@ -128,6 +237,8 @@ spatial_basis_density_field <- function(
     y = "y_location",
     z = "z_location",
     origin = NULL,
+    quadrature_method = c("simplex", "grid"),
+    quadrature_subdivision = 4L,
     quadrature_n = 10000L,
     quadrature_expansion = 0.02,
     density_floor = 0.05,
@@ -142,6 +253,7 @@ spatial_basis_density_field <- function(
     show_progress = TRUE
 ) {
     basis = normalize_spatial_basis(basis)
+    quadrature_method = match.arg(quadrature_method)
     lattice_basis = if (basis == "2d") "tri" else "bcc"
     d = if (basis == "2d") 2L else 3L
     coord_cols = if (basis == "2d") c(x, y) else c(x, y, z)
@@ -159,6 +271,12 @@ spatial_basis_density_field <- function(
     if (length(s) != 1L || !is.finite(s) || s <= 0) {
         stop("s must be a positive finite scalar.", call. = FALSE)
     }
+    if (length(quadrature_subdivision) != 1L ||
+        !is.finite(quadrature_subdivision) ||
+        quadrature_subdivision < 1L) {
+        stop("quadrature_subdivision must be a positive integer.", call. = FALSE)
+    }
+    quadrature_subdivision = as.integer(quadrature_subdivision)
     if (quadrature_n < 1L) {
         stop("quadrature_n must be positive.", call. = FALSE)
     }
@@ -201,36 +319,60 @@ spatial_basis_density_field <- function(
     }
 
     if (show_progress) {
-        message("Building quadrature grid...")
-    }
-    quadrature = make_density_quadrature_grid(coords, quadrature_n, quadrature_expansion)
-    all_coords = rbind(coords, quadrature$coords)
-
-    if (show_progress) {
         message("Computing spatial basis interpolation...")
     }
-    bary = if (basis == "2d") {
-        tri_barycentric(all_coords, s = s, origin = origin, n_threads = basis_n_threads)
+    if (quadrature_method == "grid") {
+        if (show_progress) {
+            message("Building rectangular quadrature grid...")
+        }
+        quadrature = make_density_quadrature_grid(coords, quadrature_n, quadrature_expansion)
+        quadrature$method = "grid"
+        all_coords = rbind(coords, quadrature$coords)
+        bary = if (basis == "2d") {
+            tri_barycentric(all_coords, s = s, origin = origin, n_threads = basis_n_threads)
+        } else {
+            bcc_barycentric(all_coords, s = s, origin = origin, n_threads = basis_n_threads)
+        }
+        design = basis_design_from_barycentric(bary)
     } else {
-        bcc_barycentric(all_coords, s = s, origin = origin, n_threads = basis_n_threads)
+        bary = if (basis == "2d") {
+            tri_barycentric(coords, s = s, origin = origin, n_threads = basis_n_threads)
+        } else {
+            bcc_barycentric(coords, s = s, origin = origin, n_threads = basis_n_threads)
+        }
+        design = basis_design_from_barycentric(bary)
+        if (show_progress) {
+            message("Building occupied-simplex quadrature...")
+        }
+        quadrature = make_density_quadrature_simplex(
+            design = design,
+            d = d,
+            subdivision = quadrature_subdivision
+        )
     }
-    design = basis_design_from_barycentric(bary)
     n_obs = nrow(coords)
     obs_idx = seq_len(n_obs)
-    quad_idx = seq.int(n_obs + 1L, nrow(all_coords))
 
     if (show_progress) {
         message("Building basis edge design...")
     }
     basis_edges = build_lattice_neighbor_edges(design$basis_lattice, basis = lattice_basis, s = s)
-    active_edge = build_active_edge_design(design$basis_id)
-
-    obs_basis_id = design$basis_id[obs_idx, , drop = FALSE] - 1L
-    quad_basis_id = design$basis_id[quad_idx, , drop = FALSE] - 1L
+    obs_basis_id_1 = design$basis_id[obs_idx, , drop = FALSE]
     obs_basis_weight = design$basis_weight[obs_idx, , drop = FALSE]
-    quad_basis_weight = design$basis_weight[quad_idx, , drop = FALSE]
-    obs_edge_id = active_edge$edge_id[obs_idx, , drop = FALSE]
-    quad_edge_id = active_edge$edge_id[quad_idx, , drop = FALSE]
+    if (quadrature_method == "grid") {
+        quad_idx = seq.int(n_obs + 1L, nrow(design$basis_id))
+        quad_basis_id_1 = design$basis_id[quad_idx, , drop = FALSE]
+        quad_basis_weight = design$basis_weight[quad_idx, , drop = FALSE]
+    } else {
+        quad_basis_id_1 = quadrature$basis_id
+        quad_basis_weight = quadrature$basis_weight
+    }
+    active_edge = build_active_edge_design(rbind(obs_basis_id_1, quad_basis_id_1))
+
+    obs_basis_id = obs_basis_id_1 - 1L
+    quad_basis_id = quad_basis_id_1 - 1L
+    obs_edge_id = active_edge$edge_id[seq_len(n_obs), , drop = FALSE]
+    quad_edge_id = active_edge$edge_id[seq.int(n_obs + 1L, n_obs + nrow(quad_basis_id_1)), , drop = FALSE]
 
     M = nrow(design$basis_lattice)
     E = nrow(active_edge$edge_pairs)
@@ -320,6 +462,7 @@ spatial_basis_density_field <- function(
         eta_basis = eta,
         boundary_node_basis = s_node,
         boundary_edge_basis = s_edge,
+        boundary_edge_pairs = active_edge$edge_pairs,
         density_floor = density_floor,
         basis_points = design$basis_points,
         basis_lattice = design$basis_lattice,
@@ -330,6 +473,8 @@ spatial_basis_density_field <- function(
             basis = basis,
             s = s,
             origin = origin,
+            quadrature_method = quadrature_method,
+            quadrature_subdivision = quadrature_subdivision,
             quadrature_n = quadrature_n,
             quadrature_expansion = quadrature_expansion,
             lambda_eta = lambda_eta,

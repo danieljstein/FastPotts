@@ -13,6 +13,8 @@ spatial_basis_density_field(
   y = "y_location",
   z = "z_location",
   origin = NULL,
+  quadrature_method = c("simplex", "grid"),
+  quadrature_subdivision = 4L,
   quadrature_n = 10000L,
   quadrature_expansion = 0.02,
   density_floor = 0.05,
@@ -41,11 +43,20 @@ matrix.}
 
 \item{origin}{Optional lattice origin.}
 
-\item{quadrature_n}{Approximate number of quadrature points over the
-coordinate bounding box.}
+\item{quadrature_method}{Character; \code{"simplex"} uses occupied-simplex
+quadrature, while \code{"grid"} uses a regular grid over the coordinate
+bounding box.}
 
-\item{quadrature_expansion}{Fractional bounding-box expansion used for
-quadrature.}
+\item{quadrature_subdivision}{Positive integer subdivision factor for
+occupied-simplex quadrature. In 2D this creates \code{m^2} equal-area
+quadrature points per occupied triangle. In 3D this creates \code{m^3}
+Duffy-midpoint quadrature points per occupied tetrahedron.}
+
+\item{quadrature_n}{Approximate number of quadrature points over the
+coordinate bounding box when \code{quadrature_method = "grid"}.}
+
+\item{quadrature_expansion}{Fractional bounding-box expansion used when
+\code{quadrature_method = "grid"}.}
 
 \item{density_floor}{Scalar or vector floor multiplier in \verb{[0, 1)}. A value
 of \code{0.05} means boundary attenuation can reduce density to 5 percent of
@@ -98,6 +109,6 @@ g_k(x) = \sum_a \lambda_a(x) s_{a,k}
 }
 
 The objective is a posterior-weighted inhomogeneous Poisson point-process
-likelihood with a regular-grid quadrature approximation over the coordinate
-bounding box.
+likelihood with either occupied-simplex quadrature or a regular-grid
+quadrature approximation.
 }

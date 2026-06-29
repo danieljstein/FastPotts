@@ -195,7 +195,23 @@ $$
 \int_\Omega \rho_k(x)\,dx
 $$
 
-is approximated using a regular grid over the coordinate bounding box.
+is approximated numerically.
+
+The default implementation uses occupied-simplex quadrature. It first finds the
+spatial basis simplex containing each transcript, keeps the unique occupied
+simplexes, and places quadrature points inside each one.
+
+For `basis = "2d"`, `quadrature_subdivision = m` splits each occupied triangle
+into `m^2` equal-area subtriangles and places one quadrature point at each
+subtriangle centroid. Each quadrature point has weight:
+
+$$
+v_j = \frac{\operatorname{area}(\Delta)}{m^2}.
+$$
+
+For `basis = "3d"`, `quadrature_subdivision = m` currently uses `m^3`
+simplex-local Duffy-midpoint quadrature points per occupied tetrahedron. The
+weights are scaled so they sum to the tetrahedron volume.
 
 If quadrature points $z_j$ have weights $v_j$, then:
 
@@ -204,6 +220,18 @@ $$
 \approx
 \sum_j v_j \rho_k(z_j)
 $$
+
+This simplex-local quadrature is usually a better match to the model than a
+rectangular grid because the density field is defined by barycentric
+coordinates inside simplexes. It also reduces aliasing artifacts where the
+optimizer can create very sharp density peaks or dips between sparse
+rectangular grid points.
+
+The older rectangular-grid quadrature can still be requested with:
+
+```r
+quadrature_method = "grid"
+```
 
 The user controls the approximate number of quadrature points with:
 
@@ -217,9 +245,25 @@ and the fractional bounding-box expansion with:
 quadrature_expansion
 ```
 
-The current implementation uses the same quadrature grid for all cell types.
-This is simple and robust for prototyping, but it can be inefficient in large
-or irregular spatial domains.
+These grid-specific arguments are only used when `quadrature_method = "grid"`.
+
+### Adaptive Quadrature
+
+An adaptive simplex grid would be a natural future extension. The basic idea
+would be:
+
+1. Fit the model with a coarse simplex quadrature.
+2. Evaluate the fitted field inside each occupied simplex.
+3. Refine simplexes where the fitted field has large variation, large gradient
+   magnitude, high curvature, or extreme transcript-versus-quadrature density
+   mismatch.
+4. Refit using the refined quadrature rule.
+
+This would target quadrature effort near thin boundaries or sharp peaks,
+instead of spending the same number of points in every occupied simplex. The
+important implementation detail is that the quadrature rule should be fixed
+during each optimization run; changing quadrature points continuously during
+L-BFGS would make the objective unstable.
 
 ## Regularization
 
@@ -336,6 +380,7 @@ The returned object exposes these as:
 eta_basis
 boundary_node_basis
 boundary_edge_basis
+boundary_edge_pairs
 ```
 
 Transcript-level predictions are returned as:
