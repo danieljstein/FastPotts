@@ -298,6 +298,16 @@ spatial_basis_predict_cpp <- function(par, basis_id, basis_weight, gene_index, l
     .Call(`_FastPotts_spatial_basis_predict_cpp`, par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types)
 }
 
+#' @noRd
+spatial_density_objective_cpp <- function(par, obs_basis_id, obs_basis_weight, obs_edge_id, obs_weight, quad_basis_id, quad_basis_weight, quad_edge_id, quad_weight, pair_from, pair_to, smooth_edge_from, smooth_edge_to, smooth_edge_distance, density_floor, lambda_eta, lambda_s_smooth, lambda_s_prior, s_prior_mean, lambda_edge, n_basis, n_edge_coef, n_cell_types, n_threads) {
+    .Call(`_FastPotts_spatial_density_objective_cpp`, par, obs_basis_id, obs_basis_weight, obs_edge_id, obs_weight, quad_basis_id, quad_basis_weight, quad_edge_id, quad_weight, pair_from, pair_to, smooth_edge_from, smooth_edge_to, smooth_edge_distance, density_floor, lambda_eta, lambda_s_smooth, lambda_s_prior, s_prior_mean, lambda_edge, n_basis, n_edge_coef, n_cell_types, n_threads)
+}
+
+#' @noRd
+spatial_density_predict_cpp <- function(par, basis_id, basis_weight, edge_id, pair_from, pair_to, density_floor, n_basis, n_edge_coef, n_cell_types, n_threads) {
+    .Call(`_FastPotts_spatial_density_predict_cpp`, par, basis_id, basis_weight, edge_id, pair_from, pair_to, density_floor, n_basis, n_edge_coef, n_cell_types, n_threads)
+}
+
 #' Estimate graph transcript density
 #'
 #' Internal C++ helper for `partition_transcripts_watershed()`.

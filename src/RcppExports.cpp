@@ -171,6 +171,61 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// spatial_density_objective_cpp
+List spatial_density_objective_cpp(const NumericVector& par, const IntegerMatrix& obs_basis_id, const NumericMatrix& obs_basis_weight, const IntegerMatrix& obs_edge_id, const NumericMatrix& obs_weight, const IntegerMatrix& quad_basis_id, const NumericMatrix& quad_basis_weight, const IntegerMatrix& quad_edge_id, const NumericVector& quad_weight, const IntegerVector& pair_from, const IntegerVector& pair_to, const IntegerVector& smooth_edge_from, const IntegerVector& smooth_edge_to, const NumericVector& smooth_edge_distance, const NumericVector& density_floor, const double lambda_eta, const double lambda_s_smooth, const double lambda_s_prior, const double s_prior_mean, const double lambda_edge, const int n_basis, const int n_edge_coef, const int n_cell_types, const int n_threads);
+RcppExport SEXP _FastPotts_spatial_density_objective_cpp(SEXP parSEXP, SEXP obs_basis_idSEXP, SEXP obs_basis_weightSEXP, SEXP obs_edge_idSEXP, SEXP obs_weightSEXP, SEXP quad_basis_idSEXP, SEXP quad_basis_weightSEXP, SEXP quad_edge_idSEXP, SEXP quad_weightSEXP, SEXP pair_fromSEXP, SEXP pair_toSEXP, SEXP smooth_edge_fromSEXP, SEXP smooth_edge_toSEXP, SEXP smooth_edge_distanceSEXP, SEXP density_floorSEXP, SEXP lambda_etaSEXP, SEXP lambda_s_smoothSEXP, SEXP lambda_s_priorSEXP, SEXP s_prior_meanSEXP, SEXP lambda_edgeSEXP, SEXP n_basisSEXP, SEXP n_edge_coefSEXP, SEXP n_cell_typesSEXP, SEXP n_threadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericVector& >::type par(parSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type obs_basis_id(obs_basis_idSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type obs_basis_weight(obs_basis_weightSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type obs_edge_id(obs_edge_idSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type obs_weight(obs_weightSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type quad_basis_id(quad_basis_idSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type quad_basis_weight(quad_basis_weightSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type quad_edge_id(quad_edge_idSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type quad_weight(quad_weightSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type pair_from(pair_fromSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type pair_to(pair_toSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type smooth_edge_from(smooth_edge_fromSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type smooth_edge_to(smooth_edge_toSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type smooth_edge_distance(smooth_edge_distanceSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type density_floor(density_floorSEXP);
+    Rcpp::traits::input_parameter< const double >::type lambda_eta(lambda_etaSEXP);
+    Rcpp::traits::input_parameter< const double >::type lambda_s_smooth(lambda_s_smoothSEXP);
+    Rcpp::traits::input_parameter< const double >::type lambda_s_prior(lambda_s_priorSEXP);
+    Rcpp::traits::input_parameter< const double >::type s_prior_mean(s_prior_meanSEXP);
+    Rcpp::traits::input_parameter< const double >::type lambda_edge(lambda_edgeSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_basis(n_basisSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_edge_coef(n_edge_coefSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_cell_types(n_cell_typesSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_threads(n_threadsSEXP);
+    rcpp_result_gen = Rcpp::wrap(spatial_density_objective_cpp(par, obs_basis_id, obs_basis_weight, obs_edge_id, obs_weight, quad_basis_id, quad_basis_weight, quad_edge_id, quad_weight, pair_from, pair_to, smooth_edge_from, smooth_edge_to, smooth_edge_distance, density_floor, lambda_eta, lambda_s_smooth, lambda_s_prior, s_prior_mean, lambda_edge, n_basis, n_edge_coef, n_cell_types, n_threads));
+    return rcpp_result_gen;
+END_RCPP
+}
+// spatial_density_predict_cpp
+List spatial_density_predict_cpp(const NumericVector& par, const IntegerMatrix& basis_id, const NumericMatrix& basis_weight, const IntegerMatrix& edge_id, const IntegerVector& pair_from, const IntegerVector& pair_to, const NumericVector& density_floor, const int n_basis, const int n_edge_coef, const int n_cell_types, const int n_threads);
+RcppExport SEXP _FastPotts_spatial_density_predict_cpp(SEXP parSEXP, SEXP basis_idSEXP, SEXP basis_weightSEXP, SEXP edge_idSEXP, SEXP pair_fromSEXP, SEXP pair_toSEXP, SEXP density_floorSEXP, SEXP n_basisSEXP, SEXP n_edge_coefSEXP, SEXP n_cell_typesSEXP, SEXP n_threadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericVector& >::type par(parSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type basis_id(basis_idSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type basis_weight(basis_weightSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type edge_id(edge_idSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type pair_from(pair_fromSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type pair_to(pair_toSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type density_floor(density_floorSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_basis(n_basisSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_edge_coef(n_edge_coefSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_cell_types(n_cell_typesSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_threads(n_threadsSEXP);
+    rcpp_result_gen = Rcpp::wrap(spatial_density_predict_cpp(par, basis_id, basis_weight, edge_id, pair_from, pair_to, density_floor, n_basis, n_edge_coef, n_cell_types, n_threads));
+    return rcpp_result_gen;
+END_RCPP
+}
 // estimate_graph_density_cpp
 NumericVector estimate_graph_density_cpp(const IntegerVector& from, const IntegerVector& to, const NumericVector& distance, const NumericMatrix& posterior, const double bandwidth, const int mode);
 RcppExport SEXP _FastPotts_estimate_graph_density_cpp(SEXP fromSEXP, SEXP toSEXP, SEXP distanceSEXP, SEXP posteriorSEXP, SEXP bandwidthSEXP, SEXP modeSEXP) {
@@ -263,6 +318,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_potts_lbp_parallel_cpp", (DL_FUNC) &_FastPotts_potts_lbp_parallel_cpp, 10},
     {"_FastPotts_spatial_basis_objective_cpp", (DL_FUNC) &_FastPotts_spatial_basis_objective_cpp, 17},
     {"_FastPotts_spatial_basis_predict_cpp", (DL_FUNC) &_FastPotts_spatial_basis_predict_cpp, 8},
+    {"_FastPotts_spatial_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_density_objective_cpp, 24},
+    {"_FastPotts_spatial_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_density_predict_cpp, 11},
     {"_FastPotts_estimate_graph_density_cpp", (DL_FUNC) &_FastPotts_estimate_graph_density_cpp, 6},
     {"_FastPotts_posterior_js_divergence_edges_cpp", (DL_FUNC) &_FastPotts_posterior_js_divergence_edges_cpp, 4},
     {"_FastPotts_density_ascent_partition_cpp", (DL_FUNC) &_FastPotts_density_ascent_partition_cpp, 7},
