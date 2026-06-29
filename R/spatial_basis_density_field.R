@@ -170,19 +170,23 @@ normalize_density_floor <- function(density_floor, cell_types) {
 #'
 #' Experimental prototype for fitting a posterior-weighted transcript density
 #' field on the same triangular or BCC barycentric basis used by
-#' [spatial_basis_segmentation()]. For each cell type, the modeled density is
+#' [spatial_basis_segmentation()]. In the default shared-density mode, one
+#' total transcript density field is fit and cell-type-specific densities are
+#' computed by multiplying by the supplied posterior probabilities. In
+#' cell-type mode, each cell type gets its own density field. The modeled
+#' density field is
 #'
 #' \deqn{
-#' \rho_k(x) = \exp(\eta_k(x))
-#' \left[f_k + (1 - f_k)\operatorname{sigmoid}(-g_k(x))\right],
+#' \rho(x) = \exp(\eta(x))
+#' \left[f + (1 - f)\operatorname{sigmoid}(-g(x))\right],
 #' }
 #'
 #' where `eta` is a vertex-linear baseline log-density field, and `g` combines
 #' a vertex-linear field with shared edge-quadratic terms,
 #'
 #' \deqn{
-#' g_k(x) = \sum_a \lambda_a(x) s_{a,k}
-#' + \sum_{a<b} \lambda_a(x)\lambda_b(x) s_{ab,k}.
+#' g(x) = \sum_a \lambda_a(x) s_a
+#' + \sum_{a<b} \lambda_a(x)\lambda_b(x) s_{ab}.
 #' }
 #'
 #' The objective is a posterior-weighted inhomogeneous Poisson point-process
@@ -196,6 +200,9 @@ normalize_density_floor <- function(density_floor, cell_types) {
 #' @param s Positive spatial basis mesh size.
 #' @param x,y,z Character coordinate column names.
 #' @param origin Optional lattice origin.
+#' @param density_mode Character; `"shared"` fits one total transcript density
+#'   field and returns cell-type densities as total density times `posterior`.
+#'   `"cell_type"` fits one density field per posterior column.
 #' @param quadrature_method Character; `"simplex"` uses occupied-simplex
 #'   quadrature, while `"grid"` uses a regular grid over the coordinate
 #'   bounding box.
@@ -237,6 +244,7 @@ spatial_basis_density_field <- function(
     y = "y_location",
     z = "z_location",
     origin = NULL,
+    density_mode = c("shared", "cell_type"),
     quadrature_method = c("simplex", "grid"),
     quadrature_subdivision = 4L,
     quadrature_n = 10000L,
@@ -253,6 +261,7 @@ spatial_basis_density_field <- function(
     show_progress = TRUE
 ) {
     basis = normalize_spatial_basis(basis)
+    density_mode = match.arg(density_mode)
     quadrature_method = match.arg(quadrature_method)
     lattice_basis = if (basis == "2d") "tri" else "bcc"
     d = if (basis == "2d") 2L else 3L
@@ -310,7 +319,16 @@ spatial_basis_density_field <- function(
         cell_types = paste0("type", seq_len(ncol(posterior)))
         colnames(posterior) = cell_types
     }
-    density_floor = normalize_density_floor(density_floor, cell_types)
+    fit_cell_types = if (density_mode == "shared") "total" else cell_types
+    if (density_mode == "shared" && length(density_floor) != 1L) {
+        stop("density_floor must be scalar when density_mode = \"shared\".", call. = FALSE)
+    }
+    fit_weight = if (density_mode == "shared") {
+        matrix(rowSums(posterior), ncol = 1L, dimnames = list(NULL, fit_cell_types))
+    } else {
+        posterior
+    }
+    density_floor = normalize_density_floor(density_floor, fit_cell_types)
 
     coords = as.matrix(transcripts_df[, coord_cols, drop = FALSE])
     storage.mode(coords) = "double"
@@ -376,7 +394,7 @@ spatial_basis_density_field <- function(
 
     M = nrow(design$basis_lattice)
     E = nrow(active_edge$edge_pairs)
-    K = ncol(posterior)
+    K = ncol(fit_weight)
     par0 = numeric((2L * M + E) * K)
     eta_offset = 0L
     s_offset = M * K
@@ -384,7 +402,7 @@ spatial_basis_density_field <- function(
 
     # Initialize the broad density near the observed posterior mass per volume.
     volume = sum(quadrature$weight)
-    type_mass = colSums(posterior)
+    type_mass = colSums(fit_weight)
     eta0 = log(pmax(type_mass / volume, 1e-8))
     for (k in seq_len(K)) {
         par0[eta_offset + seq_len(M) + M * (k - 1L)] = eta0[k]
@@ -397,7 +415,7 @@ spatial_basis_density_field <- function(
             obs_basis_id = obs_basis_id,
             obs_basis_weight = obs_basis_weight,
             obs_edge_id = obs_edge_id,
-            obs_weight = posterior,
+            obs_weight = fit_weight,
             quad_basis_id = quad_basis_id,
             quad_basis_weight = quad_basis_weight,
             quad_edge_id = quad_edge_id,
@@ -446,19 +464,30 @@ spatial_basis_density_field <- function(
         n_threads = n_threads
     )
     for (name in names(pred)) {
-        colnames(pred[[name]]) = cell_types
+        colnames(pred[[name]]) = fit_cell_types
     }
 
     eta = matrix(opt$par[eta_offset + seq_len(M * K)], nrow = M, ncol = K)
     s_node = matrix(opt$par[s_offset + seq_len(M * K)], nrow = M, ncol = K)
     s_edge = matrix(opt$par[edge_offset + seq_len(E * K)], nrow = E, ncol = K)
-    colnames(eta) = colnames(s_node) = colnames(s_edge) = cell_types
+    colnames(eta) = colnames(s_node) = colnames(s_edge) = fit_cell_types
+
+    if (density_mode == "shared") {
+        total_density = as.numeric(pred$density[, 1L])
+        density = sweep(posterior, 1L, total_density, "*")
+        colnames(density) = cell_types
+    } else {
+        density = pred$density
+        total_density = rowSums(pred$density)
+    }
 
     list(
-        density = pred$density,
+        density = density,
+        total_density = total_density,
         eta = pred$eta,
         boundary_logit = pred$g,
         attenuation = pred$attenuation,
+        posterior = posterior,
         eta_basis = eta,
         boundary_node_basis = s_node,
         boundary_edge_basis = s_edge,
@@ -473,6 +502,7 @@ spatial_basis_density_field <- function(
             basis = basis,
             s = s,
             origin = origin,
+            density_mode = density_mode,
             quadrature_method = quadrature_method,
             quadrature_subdivision = quadrature_subdivision,
             quadrature_n = quadrature_n,

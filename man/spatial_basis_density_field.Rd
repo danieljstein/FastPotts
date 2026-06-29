@@ -13,6 +13,7 @@ spatial_basis_density_field(
   y = "y_location",
   z = "z_location",
   origin = NULL,
+  density_mode = c("shared", "cell_type"),
   quadrature_method = c("simplex", "grid"),
   quadrature_subdivision = 4L,
   quadrature_n = 10000L,
@@ -42,6 +43,10 @@ matrix.}
 \item{x, y, z}{Character coordinate column names.}
 
 \item{origin}{Optional lattice origin.}
+
+\item{density_mode}{Character; \code{"shared"} fits one total transcript density
+field and returns cell-type densities as total density times \code{posterior}.
+\code{"cell_type"} fits one density field per posterior column.}
 
 \item{quadrature_method}{Character; \code{"simplex"} uses occupied-simplex
 quadrature, while \code{"grid"} uses a regular grid over the coordinate
@@ -92,20 +97,24 @@ parameters.
 \description{
 Experimental prototype for fitting a posterior-weighted transcript density
 field on the same triangular or BCC barycentric basis used by
-\code{\link[=spatial_basis_segmentation]{spatial_basis_segmentation()}}. For each cell type, the modeled density is
+\code{\link[=spatial_basis_segmentation]{spatial_basis_segmentation()}}. In the default shared-density mode, one
+total transcript density field is fit and cell-type-specific densities are
+computed by multiplying by the supplied posterior probabilities. In
+cell-type mode, each cell type gets its own density field. The modeled
+density field is
 }
 \details{
 \deqn{
-\rho_k(x) = \exp(\eta_k(x))
-\left[f_k + (1 - f_k)\operatorname{sigmoid}(-g_k(x))\right],
+\rho(x) = \exp(\eta(x))
+\left[f + (1 - f)\operatorname{sigmoid}(-g(x))\right],
 }
 
 where \code{eta} is a vertex-linear baseline log-density field, and \code{g} combines
 a vertex-linear field with shared edge-quadratic terms,
 
 \deqn{
-g_k(x) = \sum_a \lambda_a(x) s_{a,k}
-+ \sum_{a<b} \lambda_a(x)\lambda_b(x) s_{ab,k}.
+g(x) = \sum_a \lambda_a(x) s_a
++ \sum_{a<b} \lambda_a(x)\lambda_b(x) s_{ab}.
 }
 
 The objective is a posterior-weighted inhomogeneous Poisson point-process
