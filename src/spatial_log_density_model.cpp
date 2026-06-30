@@ -51,6 +51,7 @@ List spatial_log_density_objective_cpp(
     const int regularization,
     const double delta,
     const double sigma,
+    const double lambda_laplacian,
     const int n_threads
 ) {
     const int n_obs = obs_basis_id.nrow();
@@ -79,6 +80,9 @@ List spatial_log_density_objective_cpp(
     }
     if (!R_finite(sigma) || sigma <= 0.0) {
         stop("sigma must be a positive finite number.");
+    }
+    if (!R_finite(lambda_laplacian) || lambda_laplacian < 0.0) {
+        stop("lambda_laplacian must be a non-negative finite number.");
     }
 
     const int actual_threads = log_density_resolve_threads(n_threads);
@@ -175,6 +179,54 @@ List spatial_log_density_objective_cpp(
             const double derivative_wrt_diff = scale * derivative_wrt_slope / distance;
             grad_full[a] += derivative_wrt_diff;
             grad_full[b] -= derivative_wrt_diff;
+        }
+    }
+
+    if (lambda_laplacian > 0.0 && n_edges > 0) {
+        std::vector<double> neighbor_weight_sum(n_basis, 0.0);
+        std::vector<double> neighbor_weight(n_edges, 0.0);
+
+        for (int e = 0; e < n_edges; ++e) {
+            const int a = edge_from[e];
+            const int b = edge_to[e];
+            const double distance = edge_distance[e];
+            const double w = 1.0 / (distance * distance);
+            neighbor_weight[e] = w;
+            neighbor_weight_sum[a] += w;
+            neighbor_weight_sum[b] += w;
+        }
+
+        std::vector<double> laplacian(n_basis, 0.0);
+        for (int a = 0; a < n_basis; ++a) {
+            laplacian[a] = par[a];
+        }
+        for (int e = 0; e < n_edges; ++e) {
+            const int a = edge_from[e];
+            const int b = edge_to[e];
+            const double w = neighbor_weight[e];
+            if (neighbor_weight_sum[a] > 0.0) {
+                laplacian[a] -= w * par[b] / neighbor_weight_sum[a];
+            }
+            if (neighbor_weight_sum[b] > 0.0) {
+                laplacian[b] -= w * par[a] / neighbor_weight_sum[b];
+            }
+        }
+
+        const double scale = lambda_laplacian / static_cast<double>(n_basis);
+        for (int a = 0; a < n_basis; ++a) {
+            objective += 0.5 * scale * laplacian[a] * laplacian[a];
+            grad_full[a] += scale * laplacian[a];
+        }
+        for (int e = 0; e < n_edges; ++e) {
+            const int a = edge_from[e];
+            const int b = edge_to[e];
+            const double w = neighbor_weight[e];
+            if (neighbor_weight_sum[a] > 0.0) {
+                grad_full[b] -= scale * w * laplacian[a] / neighbor_weight_sum[a];
+            }
+            if (neighbor_weight_sum[b] > 0.0) {
+                grad_full[a] -= scale * w * laplacian[b] / neighbor_weight_sum[b];
+            }
         }
     }
 

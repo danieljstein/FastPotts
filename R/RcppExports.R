@@ -309,8 +309,8 @@ spatial_density_predict_cpp <- function(par, basis_id, basis_weight, edge_id, pa
 }
 
 #' @noRd
-spatial_log_density_objective_cpp <- function(par, obs_basis_id, obs_basis_weight, quad_basis_id, quad_basis_weight, quad_weight, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, n_threads) {
-    .Call(`_FastPotts_spatial_log_density_objective_cpp`, par, obs_basis_id, obs_basis_weight, quad_basis_id, quad_basis_weight, quad_weight, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, n_threads)
+spatial_log_density_objective_cpp <- function(par, obs_basis_id, obs_basis_weight, quad_basis_id, quad_basis_weight, quad_weight, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, lambda_laplacian, n_threads) {
+    .Call(`_FastPotts_spatial_log_density_objective_cpp`, par, obs_basis_id, obs_basis_weight, quad_basis_id, quad_basis_weight, quad_weight, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, lambda_laplacian, n_threads)
 }
 
 #' @noRd

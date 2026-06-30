@@ -15,9 +15,10 @@ spatial_basis_log_density_field(
   origin = NULL,
   quadrature_subdivision = 4L,
   lambda = 0.1,
-  regularization = c("quadratic", "huber", "bounded"),
+  regularization = c("bounded", "quadratic", "huber"),
   delta = 1,
   sigma = 1,
+  lambda_laplacian = 0,
   maxit = 100L,
   reltol = 1e-06,
   n_threads = NULL,
@@ -53,6 +54,10 @@ log-density slopes.}
 
 \item{sigma}{Positive bounded-penalty slope scale. Used only when
 \code{regularization = "bounded"}.}
+
+\item{lambda_laplacian}{Non-negative strength for a graph Laplacian
+curvature penalty on the basis-point log-density field. This penalizes
+deviations from a distance-weighted neighbor average.}
 
 \item{maxit}{Maximum L-BFGS iterations.}
 

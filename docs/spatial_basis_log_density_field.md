@@ -157,7 +157,7 @@ where `d_ab` is the physical distance between neighboring basis points.
 The regularization term is:
 
 $$
-R(w)
+R_{\nabla}(w)
 = \lambda
   \frac{1}{|E|}
   \sum_{(a,b) \in E}
@@ -168,7 +168,9 @@ The fitted objective is:
 
 $$
 \mathcal{J}
-= \frac{1}{n}\mathcal{L}_{\text{data}} + R(w).
+= \frac{1}{n}\mathcal{L}_{\text{data}}
+  + R_{\nabla}(w)
+  + R_{\Delta}(w).
 $$
 
 ### Quadratic
@@ -211,6 +213,52 @@ $$
 
 This has quadratic small-slope behavior but saturates for large slopes. It can
 preserve stronger edges, but the objective is more nonconvex.
+
+### Graph Laplacian Curvature Penalty
+
+The optional `lambda_laplacian` penalty acts on the graph Laplacian of the
+basis-point log-density field. For each basis point `a`, define a
+distance-weighted neighbor average:
+
+$$
+\bar{w}_a =
+\frac{\sum_{b \in N(a)} \omega_{ab} w_b}
+     {\sum_{b \in N(a)} \omega_{ab}},
+\qquad
+\omega_{ab} = \frac{1}{d_{ab}^2}.
+$$
+
+The discrete Laplacian residual is:
+
+$$
+(\Delta w)_a = w_a - \bar{w}_a.
+$$
+
+The penalty is:
+
+$$
+R_{\Delta}(w)
+= \lambda_{\Delta}
+  \frac{1}{2M}
+  \sum_a
+  \left[(\Delta w)_a\right]^2,
+$$
+
+where `M` is the number of basis points.
+
+This penalty suppresses isolated speckles and jagged curvature by encouraging
+each basis coefficient to agree with a local linear/harmonic continuation from
+its neighbors. It is different from the first-difference penalty: the
+first-difference penalty suppresses slopes, while the Laplacian penalty
+suppresses changes in slope.
+
+The two penalties can be combined. A useful starting point is:
+
+```r
+regularization = "bounded"
+lambda = 0.1
+lambda_laplacian = 0.1
+```
 
 ## Parameters
 
@@ -256,9 +304,10 @@ log_density_fit <- spatial_basis_log_density_field(
     s = 2,
     quadrature_subdivision = 4,
     lambda = 0.1,
-    regularization = "huber",
+    regularization = "bounded",
     delta = 1,
     sigma = 1,
+    lambda_laplacian = 0.1,
     maxit = 100
 )
 ```
@@ -284,6 +333,8 @@ Important limitations include:
 - The integral is only over occupied simplexes, not a full tissue mask.
 - Very fine meshes may still require stronger regularization to avoid
   overfitting.
+- The graph Laplacian penalty suppresses speckles, but it does not explicitly
+  distinguish blob-like curvature from line-like or sheet-like boundaries.
 - Cell-type-specific density is only as spatially resolved as the supplied
   posterior probabilities.
 - The model estimates density fields, not cell partitions directly.

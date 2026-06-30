@@ -31,6 +31,9 @@
 #'   `regularization = "huber"`.
 #' @param sigma Positive bounded-penalty slope scale. Used only when
 #'   `regularization = "bounded"`.
+#' @param lambda_laplacian Non-negative strength for a graph Laplacian
+#'   curvature penalty on the basis-point log-density field. This penalizes
+#'   deviations from a distance-weighted neighbor average.
 #' @param maxit Maximum L-BFGS iterations.
 #' @param reltol Relative convergence tolerance.
 #' @param n_threads Integer number of OpenMP threads. If `NULL`, uses runtime
@@ -52,9 +55,10 @@ spatial_basis_log_density_field <- function(
     origin = NULL,
     quadrature_subdivision = 4L,
     lambda = 0.1,
-    regularization = c("quadratic", "huber", "bounded"),
+    regularization = c("bounded", "quadratic", "huber"),
     delta = 1,
     sigma = 1,
+    lambda_laplacian = 0,
     maxit = 100L,
     reltol = 1e-6,
     n_threads = NULL,
@@ -93,6 +97,9 @@ spatial_basis_log_density_field <- function(
     }
     if (length(sigma) != 1L || !is.finite(sigma) || sigma <= 0) {
         stop("sigma must be a positive finite scalar.", call. = FALSE)
+    }
+    if (length(lambda_laplacian) != 1L || !is.finite(lambda_laplacian) || lambda_laplacian < 0) {
+        stop("lambda_laplacian must be a non-negative finite scalar.", call. = FALSE)
     }
     if (maxit < 1L) {
         stop("maxit must be positive.", call. = FALSE)
@@ -171,6 +178,7 @@ spatial_basis_log_density_field <- function(
             regularization = regularization_id,
             delta = delta,
             sigma = sigma,
+            lambda_laplacian = lambda_laplacian,
             n_threads = n_threads
         )
     }
@@ -223,6 +231,7 @@ spatial_basis_log_density_field <- function(
             regularization = regularization,
             delta = delta,
             sigma = sigma,
+            lambda_laplacian = lambda_laplacian,
             maxit = maxit,
             reltol = reltol
         )
