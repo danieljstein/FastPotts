@@ -109,7 +109,7 @@ simplex_volume <- function(vertices) {
     abs(det(edge_matrix)) / factorial(d)
 }
 
-make_density_quadrature_simplex <- function(design, d, subdivision) {
+make_density_quadrature_simplex <- function(design, d, subdivision, store_coords = TRUE) {
     rule = simplex_quadrature_rule(d, subdivision)
     simplex_key = apply(design$basis_id, 1L, paste, collapse = ":")
     first = match(unique(simplex_key), simplex_key)
@@ -120,7 +120,7 @@ make_density_quadrature_simplex <- function(design, d, subdivision) {
     quad_n = n_simplex * n_rule
     quad_basis_id = matrix(NA_integer_, nrow = quad_n, ncol = ncol(simplex_basis_id))
     quad_basis_weight = matrix(NA_real_, nrow = quad_n, ncol = ncol(simplex_basis_id))
-    quad_coords = matrix(NA_real_, nrow = quad_n, ncol = d)
+    quad_coords = if (isTRUE(store_coords)) matrix(NA_real_, nrow = quad_n, ncol = d) else NULL
     quad_weight = numeric(quad_n)
 
     row_start = 1L
@@ -131,9 +131,19 @@ make_density_quadrature_simplex <- function(design, d, subdivision) {
         idx = row_start:(row_start + n_rule - 1L)
         quad_basis_id[idx, ] = matrix(ids, nrow = n_rule, ncol = length(ids), byrow = TRUE)
         quad_basis_weight[idx, ] = rule$lambda
-        quad_coords[idx, ] = rule$lambda %*% vertices
+        if (isTRUE(store_coords)) {
+            quad_coords[idx, ] = rule$lambda %*% vertices
+        }
         quad_weight[idx] = volume * rule$weight
         row_start = row_start + n_rule
+    }
+    bounds = if (isTRUE(store_coords)) {
+        rbind(
+            min = vapply(seq_len(d), function(j) min(quad_coords[, j]), numeric(1L)),
+            max = vapply(seq_len(d), function(j) max(quad_coords[, j]), numeric(1L))
+        )
+    } else {
+        NULL
     }
 
     list(
@@ -141,10 +151,7 @@ make_density_quadrature_simplex <- function(design, d, subdivision) {
         weight = quad_weight,
         basis_id = quad_basis_id,
         basis_weight = quad_basis_weight,
-        bounds = rbind(
-            min = apply(quad_coords, 2L, min),
-            max = apply(quad_coords, 2L, max)
-        ),
+        bounds = bounds,
         method = "simplex",
         subdivision = as.integer(subdivision),
         n_simplex = n_simplex

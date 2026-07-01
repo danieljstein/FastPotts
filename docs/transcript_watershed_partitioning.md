@@ -399,6 +399,33 @@ partition <- partition_transcripts_watershed(
 )
 ```
 
+You can also provide a precomputed transcript density, for example from
+`spatial_basis_log_density_field()`:
+
+```r
+density_fit <- spatial_basis_log_density_field(
+    transcripts_df = fit$transcripts_df,
+    posterior = fit$marginals,
+    basis = "2d",
+    s = 2,
+    quadrature_subdivision = 4,
+    regularization = "bounded",
+    lambda = 0.1,
+    lambda_laplacian = 0.1
+)
+
+partition <- partition_transcripts_watershed(
+    transcripts_df = fit$transcripts_df,
+    posterior = fit$marginals,
+    density = density_fit$total_density,
+    n_neighbors = 20
+)
+```
+
+When `density` is supplied, the watershed uses those positive values directly
+for graph ascent and saddle calculations instead of estimating graph-kernel
+density internally.
+
 Inspect:
 
 ```r

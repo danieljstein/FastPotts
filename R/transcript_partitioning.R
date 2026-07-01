@@ -644,6 +644,10 @@ estimate_prior_cell_type_counts <- function(
 #'   median graph edge distance.
 #' @param density_mode Character; `"type_weighted"` uses posterior-weighted
 #'   type density, while `"total"` uses total transcript density.
+#' @param density Optional positive numeric vector with one density value per
+#'   transcript. If supplied, these values are used directly for graph ascent
+#'   and saddle calculations instead of estimating graph-kernel density from
+#'   `density_bandwidth` and `density_mode`.
 #' @param distance_weight Non-negative penalty for long uphill ascent edges.
 #' @param posterior_weight Non-negative penalty for posterior divergence during
 #'   uphill ascent.
@@ -705,6 +709,7 @@ partition_transcripts_watershed <- function(
     max_distance = Inf,
     density_bandwidth = NULL,
     density_mode = c("type_weighted", "total"),
+    density = NULL,
     distance_weight = 0,
     posterior_weight = 1,
     saddle_ratio_threshold = 0.7,
@@ -793,12 +798,27 @@ partition_transcripts_watershed <- function(
     if (is.null(density_bandwidth)) {
         density_bandwidth = stats::median(edges$distance)
     }
-    check_finite_scalar(density_bandwidth, "density_bandwidth", lower = 0, lower_strict = TRUE)
+    density_source = "graph_kernel"
+    if (is.null(density)) {
+        check_finite_scalar(density_bandwidth, "density_bandwidth", lower = 0, lower_strict = TRUE)
 
-    if (show_progress) {
-        message("Estimating local transcript density...")
+        if (show_progress) {
+            message("Estimating local transcript density...")
+        }
+        density = estimate_graph_density(edges, posterior, bandwidth = density_bandwidth, mode = density_mode)
+    } else {
+        density = as.numeric(density)
+        if (length(density) != n) {
+            stop("density must have one value per transcript.", call. = FALSE)
+        }
+        if (any(!is.finite(density)) || any(density <= 0)) {
+            stop("density must contain positive finite values.", call. = FALSE)
+        }
+        density_source = "external"
+        if (show_progress) {
+            message("Using supplied transcript density...")
+        }
     }
-    density = estimate_graph_density(edges, posterior, bandwidth = density_bandwidth, mode = density_mode)
     edge_js = posterior_js_divergence_edges(posterior, edges$from, edges$to)
 
     if (show_progress) {
@@ -919,6 +939,7 @@ partition_transcripts_watershed <- function(
             max_distance = max_distance,
             density_bandwidth = density_bandwidth,
             density_mode = density_mode,
+            density_source = density_source,
             distance_weight = distance_weight,
             posterior_weight = posterior_weight,
             saddle_ratio_threshold = saddle_ratio_threshold,

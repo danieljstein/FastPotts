@@ -14,6 +14,7 @@ spatial_basis_log_density_field(
   z = "z_location",
   origin = NULL,
   quadrature_subdivision = 4L,
+  store_quadrature_coords = FALSE,
   lambda = 0.1,
   regularization = c("bounded", "quadratic", "huber"),
   delta = 1,
@@ -42,6 +43,11 @@ total density into cell-type-specific densities.}
 
 \item{quadrature_subdivision}{Positive integer subdivision factor for
 occupied-simplex quadrature.}
+
+\item{store_quadrature_coords}{Logical; if \code{TRUE}, store quadrature point
+coordinates in the returned object. The fitting objective does not need
+these coordinates, so the default \code{FALSE} is more memory efficient for
+large 3D datasets.}
 
 \item{lambda}{Non-negative smoothing strength on neighboring basis-point
 log-density slopes.}

@@ -23,6 +23,10 @@
 #' @param origin Optional lattice origin.
 #' @param quadrature_subdivision Positive integer subdivision factor for
 #'   occupied-simplex quadrature.
+#' @param store_quadrature_coords Logical; if `TRUE`, store quadrature point
+#'   coordinates in the returned object. The fitting objective does not need
+#'   these coordinates, so the default `FALSE` is more memory efficient for
+#'   large 3D datasets.
 #' @param lambda Non-negative smoothing strength on neighboring basis-point
 #'   log-density slopes.
 #' @param regularization Character; one of `"quadratic"`, `"huber"`, or
@@ -54,6 +58,7 @@ spatial_basis_log_density_field <- function(
     z = "z_location",
     origin = NULL,
     quadrature_subdivision = 4L,
+    store_quadrature_coords = FALSE,
     lambda = 0.1,
     regularization = c("bounded", "quadratic", "huber"),
     delta = 1,
@@ -89,6 +94,9 @@ spatial_basis_log_density_field <- function(
         stop("quadrature_subdivision must be a positive integer.", call. = FALSE)
     }
     quadrature_subdivision = as.integer(quadrature_subdivision)
+    if (!is.logical(store_quadrature_coords) || length(store_quadrature_coords) != 1L || is.na(store_quadrature_coords)) {
+        stop("store_quadrature_coords must be TRUE or FALSE.", call. = FALSE)
+    }
     if (length(lambda) != 1L || !is.finite(lambda) || lambda < 0) {
         stop("lambda must be a non-negative finite scalar.", call. = FALSE)
     }
@@ -146,7 +154,8 @@ spatial_basis_log_density_field <- function(
     quadrature = make_density_quadrature_simplex(
         design = design,
         d = d,
-        subdivision = quadrature_subdivision
+        subdivision = quadrature_subdivision,
+        store_coords = store_quadrature_coords
     )
 
     if (show_progress) {
@@ -227,6 +236,7 @@ spatial_basis_log_density_field <- function(
             s = s,
             origin = origin,
             quadrature_subdivision = quadrature_subdivision,
+            store_quadrature_coords = store_quadrature_coords,
             lambda = lambda,
             regularization = regularization,
             delta = delta,

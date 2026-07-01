@@ -143,6 +143,24 @@ $$
 This keeps the integral approximation aligned with the barycentric basis used
 by the density model.
 
+For large 3D datasets, quadrature can create many points:
+
+$$
+n_{\text{quad}} =
+n_{\text{occupied simplex}} \times \text{quadrature_subdivision}^3.
+$$
+
+By default, `spatial_basis_log_density_field()` does not store quadrature point
+coordinates, because fitting only needs the quadrature basis IDs, barycentric
+weights, and integration weights. This is controlled by:
+
+```r
+store_quadrature_coords = FALSE
+```
+
+Set this to `TRUE` only if you need to plot or inspect the quadrature points
+directly.
+
 ## Regularization
 
 The model regularizes neighboring basis-point log-density coefficients. For a
@@ -303,6 +321,7 @@ log_density_fit <- spatial_basis_log_density_field(
     basis = "2d",
     s = 2,
     quadrature_subdivision = 4,
+    store_quadrature_coords = FALSE,
     lambda = 0.1,
     regularization = "bounded",
     delta = 1,

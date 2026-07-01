@@ -15,6 +15,7 @@ partition_transcripts_watershed(
   max_distance = Inf,
   density_bandwidth = NULL,
   density_mode = c("type_weighted", "total"),
+  density = NULL,
   distance_weight = 0,
   posterior_weight = 1,
   saddle_ratio_threshold = 0.7,
@@ -59,6 +60,11 @@ median graph edge distance.}
 
 \item{density_mode}{Character; \code{"type_weighted"} uses posterior-weighted
 type density, while \code{"total"} uses total transcript density.}
+
+\item{density}{Optional positive numeric vector with one density value per
+transcript. If supplied, these values are used directly for graph ascent
+and saddle calculations instead of estimating graph-kernel density from
+\code{density_bandwidth} and \code{density_mode}.}
 
 \item{distance_weight}{Non-negative penalty for long uphill ascent edges.}
 
