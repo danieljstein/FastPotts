@@ -7,6 +7,7 @@
 spatial_basis_log_density_field(
   transcripts_df,
   posterior = NULL,
+  return_density = !is.null(posterior),
   basis = c("3d", "2d", "tri", "bcc"),
   s,
   x = "x_location",
@@ -32,6 +33,10 @@ spatial_basis_log_density_field(
 \item{posterior}{Optional numeric transcript-by-cell-type posterior matrix.
 If supplied, rows are normalized and used only to decompose the fitted
 total density into cell-type-specific densities.}
+
+\item{return_density}{Logical; if \code{TRUE} and \code{posterior} is supplied, return
+the transcript-by-cell-type density matrix \code{total_density * posterior}.
+Set to \code{FALSE} for large datasets when only \code{total_density} is needed.}
 
 \item{basis}{Character; \code{"2d"}/\code{"tri"} or \code{"3d"}/\code{"bcc"}.}
 

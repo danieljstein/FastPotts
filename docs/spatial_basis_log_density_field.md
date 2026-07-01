@@ -16,6 +16,17 @@ $$
 \rho_k(x_i) = \rho(x_i) q_{ik}.
 $$
 
+For large datasets, this derived transcript-by-cell-type matrix can be much
+larger than the fitted total density vector. If only the total density is
+needed, use:
+
+```r
+return_density = FALSE
+```
+
+This still allows `posterior` to be supplied and normalized, but skips returning
+the dense `density` matrix.
+
 ## Observed Data
 
 For each transcript `i`, the model uses its spatial location:

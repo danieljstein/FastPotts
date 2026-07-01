@@ -17,6 +17,9 @@
 #' @param posterior Optional numeric transcript-by-cell-type posterior matrix.
 #'   If supplied, rows are normalized and used only to decompose the fitted
 #'   total density into cell-type-specific densities.
+#' @param return_density Logical; if `TRUE` and `posterior` is supplied, return
+#'   the transcript-by-cell-type density matrix `total_density * posterior`.
+#'   Set to `FALSE` for large datasets when only `total_density` is needed.
 #' @param basis Character; `"2d"`/`"tri"` or `"3d"`/`"bcc"`.
 #' @param s Positive spatial basis mesh size.
 #' @param x,y,z Character coordinate column names.
@@ -51,6 +54,7 @@
 spatial_basis_log_density_field <- function(
     transcripts_df,
     posterior = NULL,
+    return_density = !is.null(posterior),
     basis = c("3d", "2d", "tri", "bcc"),
     s,
     x = "x_location",
@@ -96,6 +100,9 @@ spatial_basis_log_density_field <- function(
     quadrature_subdivision = as.integer(quadrature_subdivision)
     if (!is.logical(store_quadrature_coords) || length(store_quadrature_coords) != 1L || is.na(store_quadrature_coords)) {
         stop("store_quadrature_coords must be TRUE or FALSE.", call. = FALSE)
+    }
+    if (!is.logical(return_density) || length(return_density) != 1L || is.na(return_density)) {
+        stop("return_density must be TRUE or FALSE.", call. = FALSE)
     }
     if (length(lambda) != 1L || !is.finite(lambda) || lambda < 0) {
         stop("lambda must be a non-negative finite scalar.", call. = FALSE)
@@ -213,8 +220,8 @@ spatial_basis_log_density_field <- function(
     total_density = as.numeric(pred$density)
     eta = as.numeric(pred$eta)
 
-    if (!is.null(posterior)) {
-        density = sweep(posterior, 1L, total_density, "*")
+    if (!is.null(posterior) && return_density) {
+        density = posterior * total_density
         colnames(density) = cell_types
     } else {
         density = NULL
@@ -237,6 +244,7 @@ spatial_basis_log_density_field <- function(
             origin = origin,
             quadrature_subdivision = quadrature_subdivision,
             store_quadrature_coords = store_quadrature_coords,
+            return_density = return_density,
             lambda = lambda,
             regularization = regularization,
             delta = delta,
