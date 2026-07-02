@@ -204,8 +204,8 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #' @param is_gene Character; column name indicating whether a transcript should
 #'   be treated as a gene. If absent, no gene-only filtering is applied.
 #' @param qv_threshold Numeric; minimum quality value to retain transcripts.
-#' @param origin Numeric lattice origin. Defaults to zeros with length matching
-#'   the selected basis dimension.
+#' @param origin Numeric lattice origin. If `NULL`, defaults to the per-axis
+#'   median of the filtered transcript coordinates used for fitting.
 #' @param lambda Non-negative smoothing strength between neighboring basis
 #'   coefficients. The transcript likelihood is averaged over transcripts and
 #'   the spatial penalty is averaged over graph edges, so `lambda` is on an
@@ -273,6 +273,8 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #'   \item{cell_signatures}{Final signatures used for the returned posterior.}
 #'   \item{signature_history}{List of signatures after each refinement step.}
 #'   \item{signature_update_history}{List of per-update diagnostics.}
+#'   \item{parameters}{Effective basis, optimization, and regularization
+#'     parameters used for the fit.}
 #' }
 #'
 #' @examples
@@ -325,12 +327,6 @@ spatial_basis_segmentation <- function(
     purity = match.arg(purity)
     d = if (basis == "2d") 2L else 3L
 
-    if (is.null(origin)) {
-        origin = rep(0, d)
-    }
-    if (length(origin) != d || any(!is.finite(origin))) {
-        stop("origin must be a finite numeric vector with length matching the selected basis.")
-    }
     if (length(lambda) != 1L || !is.finite(lambda) || lambda < 0) {
         stop("lambda must be a non-negative finite number.")
     }
@@ -444,6 +440,13 @@ spatial_basis_segmentation <- function(
 
     coord_cols = if (basis == "2d") c(x, y) else c(x, y, z)
     coords = as.matrix(df[, coord_cols, drop = FALSE])
+    storage.mode(coords) = "double"
+    if (is.null(origin)) {
+        origin = apply(coords, 2L, stats::median)
+    }
+    if (length(origin) != d || any(!is.finite(origin))) {
+        stop("origin must be a finite numeric vector with length matching the selected basis.")
+    }
 
     if (show_progress) {
         message("Computing spatial basis interpolation...")
@@ -589,6 +592,20 @@ spatial_basis_segmentation <- function(
         cell_signatures_initial = reference_signatures,
         cell_signatures = current_signatures,
         signature_history = signature_history,
-        signature_update_history = signature_update_history
+        signature_update_history = signature_update_history,
+        parameters = list(
+            basis = basis,
+            s = s,
+            origin = origin,
+            lambda = lambda,
+            regularization = regularization,
+            delta = delta,
+            sigma = sigma,
+            purity = purity,
+            purity_lambda = purity_lambda,
+            maxit = maxit,
+            refinement_maxit = refinement_maxit,
+            reltol = reltol
+        )
     )
 }

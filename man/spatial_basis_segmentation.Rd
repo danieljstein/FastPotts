@@ -69,8 +69,8 @@ be treated as a gene. If absent, no gene-only filtering is applied.}
 
 \item{qv_threshold}{Numeric; minimum quality value to retain transcripts.}
 
-\item{origin}{Numeric lattice origin. Defaults to zeros with length matching
-the selected basis dimension.}
+\item{origin}{Numeric lattice origin. If \code{NULL}, defaults to the per-axis
+median of the filtered transcript coordinates used for fitting.}
 
 \item{lambda}{Non-negative smoothing strength between neighboring basis
 coefficients. The transcript likelihood is averaged over transcripts and
@@ -156,6 +156,8 @@ flooring, and optional normalization.}
 \item{cell_signatures}{Final signatures used for the returned posterior.}
 \item{signature_history}{List of signatures after each refinement step.}
 \item{signature_update_history}{List of per-update diagnostics.}
+\item{parameters}{Effective basis, optimization, and regularization
+parameters used for the fit.}
 }
 }
 \description{
