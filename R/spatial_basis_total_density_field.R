@@ -349,6 +349,8 @@ spatial_basis_total_density_field <- function(
         basis_edges = basis_edges,
         parent_basis_points = basis_points,
         parent_basis_lattice = basis_lattice,
+        transcript_basis_id = design$basis_id[obs_rows, , drop = FALSE],
+        transcript_basis_weight = design$basis_weight[obs_rows, , drop = FALSE],
         quadrature = quadrature,
         optim = opt,
         parameters = list(
