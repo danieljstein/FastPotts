@@ -16,6 +16,7 @@ LinkingTo:
 Imports: 
     dplyr,
     magrittr,
+    Matrix,
     RANN,
     Rcpp,
     rlang

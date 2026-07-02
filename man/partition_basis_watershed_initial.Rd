@@ -7,6 +7,8 @@
 partition_basis_watershed_initial(
   segmentation_fit,
   density_fit,
+  posterior = segmentation_fit$marginals,
+  min_posterior_support = 0,
   distance_weight = 0,
   prior_outside = c("nearest", "error"),
   n_threads = NULL,
@@ -17,6 +19,12 @@ partition_basis_watershed_initial(
 \item{segmentation_fit}{Result from \code{\link[=spatial_basis_segmentation]{spatial_basis_segmentation()}}.}
 
 \item{density_fit}{Result from \code{\link[=spatial_basis_total_density_field]{spatial_basis_total_density_field()}}.}
+
+\item{posterior}{Optional transcript-by-cell-type posterior matrix. If
+\code{NULL}, uses \code{segmentation_fit$marginals}.}
+
+\item{min_posterior_support}{Minimum posterior-weighted transcript support
+for a density-basis vertex to be an active watershed start for a cell type.}
 
 \item{distance_weight}{Non-negative penalty for long uphill ascent edges on
 the basis graph.}

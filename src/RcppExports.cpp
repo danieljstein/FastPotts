@@ -342,6 +342,22 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// density_ascent_active_partition_cpp
+List density_ascent_active_partition_cpp(const IntegerVector& from, const IntegerVector& to, const NumericVector& distance, const NumericVector& density, const LogicalVector& active_start, const double distance_weight);
+RcppExport SEXP _FastPotts_density_ascent_active_partition_cpp(SEXP fromSEXP, SEXP toSEXP, SEXP distanceSEXP, SEXP densitySEXP, SEXP active_startSEXP, SEXP distance_weightSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerVector& >::type from(fromSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type to(toSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type distance(distanceSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type density(densitySEXP);
+    Rcpp::traits::input_parameter< const LogicalVector& >::type active_start(active_startSEXP);
+    Rcpp::traits::input_parameter< const double >::type distance_weight(distance_weightSEXP);
+    rcpp_result_gen = Rcpp::wrap(density_ascent_active_partition_cpp(from, to, distance, density, active_start, distance_weight));
+    return rcpp_result_gen;
+END_RCPP
+}
 // build_basin_adjacency_cpp
 DataFrame build_basin_adjacency_cpp(const IntegerVector& from, const IntegerVector& to, const NumericVector& distance, const IntegerVector& basin, const NumericVector& density, const NumericMatrix& posterior, const NumericVector& posterior_js, const double eps);
 RcppExport SEXP _FastPotts_build_basin_adjacency_cpp(SEXP fromSEXP, SEXP toSEXP, SEXP distanceSEXP, SEXP basinSEXP, SEXP densitySEXP, SEXP posteriorSEXP, SEXP posterior_jsSEXP, SEXP epsSEXP) {
@@ -396,6 +412,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_estimate_graph_density_cpp", (DL_FUNC) &_FastPotts_estimate_graph_density_cpp, 6},
     {"_FastPotts_posterior_js_divergence_edges_cpp", (DL_FUNC) &_FastPotts_posterior_js_divergence_edges_cpp, 4},
     {"_FastPotts_density_ascent_partition_cpp", (DL_FUNC) &_FastPotts_density_ascent_partition_cpp, 7},
+    {"_FastPotts_density_ascent_active_partition_cpp", (DL_FUNC) &_FastPotts_density_ascent_active_partition_cpp, 6},
     {"_FastPotts_build_basin_adjacency_cpp", (DL_FUNC) &_FastPotts_build_basin_adjacency_cpp, 8},
     {"_FastPotts_tri_barycentric_cpp", (DL_FUNC) &_FastPotts_tri_barycentric_cpp, 5},
     {NULL, NULL, 0}

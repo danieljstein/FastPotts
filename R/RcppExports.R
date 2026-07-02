@@ -365,6 +365,19 @@ density_ascent_partition_cpp <- function(from, to, distance, density, posterior_
     .Call(`_FastPotts_density_ascent_partition_cpp`, from, to, distance, density, posterior_js, distance_weight, posterior_weight)
 }
 
+#' Assign active graph nodes to density modes by ascent
+#'
+#' Internal C++ helper for basis-level watershed partitioning. Parents are
+#' computed over all graph nodes, but basin labels are assigned only for
+#' active starts. Inactive nodes can therefore be used as pass-through nodes
+#' along ascent paths without producing their own output basins.
+#'
+#' @keywords internal
+#' @noRd
+density_ascent_active_partition_cpp <- function(from, to, distance, density, active_start, distance_weight) {
+    .Call(`_FastPotts_density_ascent_active_partition_cpp`, from, to, distance, density, active_start, distance_weight)
+}
+
 #' Build basin adjacency and saddle diagnostics
 #'
 #' Internal C++ helper for `partition_transcripts_watershed()`.

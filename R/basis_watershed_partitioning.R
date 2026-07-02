@@ -154,26 +154,106 @@ summarize_basis_basins <- function(basin, parent, type_density, cell_types) {
     do.call(rbind, out)
 }
 
-assign_transcripts_to_basis_basins <- function(transcript_basis_id, type_density, basin, cell_types) {
+compute_basis_type_support <- function(transcript_basis_id, transcript_basis_weight, posterior, n_basis) {
+    transcript_basis_id = as.matrix(transcript_basis_id)
+    transcript_basis_weight = as.matrix(transcript_basis_weight)
+    posterior = as.matrix(posterior)
+    storage.mode(transcript_basis_id) = "integer"
+    storage.mode(transcript_basis_weight) = "double"
+    storage.mode(posterior) = "double"
+    if (!all(dim(transcript_basis_id) == dim(transcript_basis_weight))) {
+        stop("transcript_basis_id and transcript_basis_weight must have the same dimensions.", call. = FALSE)
+    }
+    if (nrow(posterior) != nrow(transcript_basis_id)) {
+        stop("posterior must have one row per transcript.", call. = FALSE)
+    }
+
+    support = matrix(0, nrow = n_basis, ncol = ncol(posterior))
+    for (a in seq_len(ncol(transcript_basis_id))) {
+        ok = !is.na(transcript_basis_id[, a]) & transcript_basis_id[, a] >= 1L & transcript_basis_id[, a] <= n_basis
+        if (!any(ok)) {
+            next
+        }
+        partial_rows = rowsum(
+            posterior[ok, , drop = FALSE] * transcript_basis_weight[ok, a],
+            group = transcript_basis_id[ok, a],
+            reorder = FALSE
+        )
+        support[as.integer(rownames(partial_rows)), ] = support[as.integer(rownames(partial_rows)), ] + partial_rows
+    }
+    colnames(support) = colnames(posterior)
+    support
+}
+
+summarize_active_basis_basins <- function(basin, mode_basis, active_start, type_density, cell_types) {
+    out = vector("list", length(cell_types))
+    for (k in seq_along(cell_types)) {
+        cell_type = cell_types[k]
+        basins = sort(unique(stats::na.omit(basin[[cell_type]])))
+        if (length(basins) == 0L) {
+            out[[k]] = NULL
+            next
+        }
+        n_basis_points = tabulate(match(basin[[cell_type]][active_start[[cell_type]]], basins), nbins = length(basins))
+        mode = mode_basis[[cell_type]][basins]
+        out[[k]] = data.frame(
+            cell_type = cell_type,
+            basin = basins,
+            cell = paste(cell_type, mode, sep = "-"),
+            n_active_basis_points = n_basis_points,
+            mode_basis_index = mode,
+            mode_density = type_density[[cell_type]][mode]
+        )
+    }
+    do.call(rbind, out)
+}
+
+make_basis_cell_names <- function(cell_type, basin, mode_basis) {
+    out = rep(NA_character_, length(basin))
+    ok = !is.na(basin)
+    out[ok] = paste(cell_type, mode_basis[basin[ok]], sep = "-")
+    out
+}
+
+assign_transcripts_to_basis_basins <- function(transcript_basis_id, type_density, basin, active_start, cell_types) {
     transcript_basis_id = as.matrix(transcript_basis_id)
     storage.mode(transcript_basis_id) = "integer"
     n = nrow(transcript_basis_id)
-    K = ncol(type_density)
+    K = length(cell_types)
     transcript_mode_basis = matrix(NA_integer_, nrow = n, ncol = K, dimnames = list(NULL, cell_types))
     transcript_basin = matrix(NA_integer_, nrow = n, ncol = K, dimnames = list(NULL, cell_types))
 
     for (k in seq_len(K)) {
-        local_density = matrix(type_density[transcript_basis_id, k], nrow = n)
-        best_active = max.col(local_density, ties.method = "first")
-        mode_basis = transcript_basis_id[cbind(seq_len(n), best_active)]
-        transcript_mode_basis[, k] = mode_basis
-        transcript_basin[, k] = basin[cbind(mode_basis, k)]
+        local_basis_id = transcript_basis_id
+        local_basis_id[is.na(local_basis_id)] = NA_integer_
+        local_density = matrix(type_density[[k]][local_basis_id], nrow = n)
+        local_active = matrix(active_start[[k]][local_basis_id], nrow = n)
+        local_active[is.na(local_active)] = FALSE
+        local_density[!local_active] = -Inf
+        has_active = rowSums(local_active) > 0L
+        best_active = max.col(local_density[has_active, , drop = FALSE], ties.method = "first")
+        mode_basis = transcript_basis_id[has_active, , drop = FALSE][cbind(seq_len(sum(has_active)), best_active)]
+        transcript_mode_basis[has_active, k] = mode_basis
+        transcript_basin[has_active, k] = basin[[k]][mode_basis]
     }
 
     list(
         transcript_mode_basis = transcript_mode_basis,
         transcript_basin = transcript_basin
     )
+}
+
+basin_cell_lookup <- function(basis_partition) {
+    summary = basis_partition$basin_summary
+    out = vector("list", length(basis_partition$active_cell_types))
+    names(out) = basis_partition$active_cell_types
+    for (cell_type in basis_partition$active_cell_types) {
+        rows = summary$cell_type == cell_type
+        values = as.character(summary$cell[rows])
+        names(values) = as.character(summary$basin[rows])
+        out[[cell_type]] = values
+    }
+    out
 }
 
 #' Initial basis-level watershed basins by cell type
@@ -186,6 +266,10 @@ assign_transcripts_to_basis_basins <- function(transcript_basis_id, type_density
 #'
 #' @param segmentation_fit Result from [spatial_basis_segmentation()].
 #' @param density_fit Result from [spatial_basis_total_density_field()].
+#' @param posterior Optional transcript-by-cell-type posterior matrix. If
+#'   `NULL`, uses `segmentation_fit$marginals`.
+#' @param min_posterior_support Minimum posterior-weighted transcript support
+#'   for a density-basis vertex to be an active watershed start for a cell type.
 #' @param distance_weight Non-negative penalty for long uphill ascent edges on
 #'   the basis graph.
 #' @param prior_outside Character; how to evaluate the spatial prior for
@@ -204,6 +288,8 @@ assign_transcripts_to_basis_basins <- function(transcript_basis_id, type_density
 partition_basis_watershed_initial <- function(
     segmentation_fit,
     density_fit,
+    posterior = segmentation_fit$marginals,
+    min_posterior_support = 0,
     distance_weight = 0,
     prior_outside = c("nearest", "error"),
     n_threads = NULL,
@@ -217,6 +303,10 @@ partition_basis_watershed_initial <- function(
         stop("density_fit must contain basis_points and basis_edges.", call. = FALSE)
     }
     check_finite_scalar(distance_weight, "distance_weight", lower = 0)
+    check_finite_scalar(min_posterior_support, "min_posterior_support", lower = 0)
+    if (is.null(density_fit$transcript_basis_id) || is.null(density_fit$transcript_basis_weight)) {
+        stop("density_fit must contain transcript_basis_id and transcript_basis_weight.", call. = FALSE)
+    }
 
     basis_points = as.matrix(density_fit$basis_points)
     storage.mode(basis_points) = "double"
@@ -247,39 +337,60 @@ partition_basis_watershed_initial <- function(
         colnames(spatial_prior) = cell_types
     }
 
-    type_density = sweep(spatial_prior, 1L, total_density, "*")
-    colnames(type_density) = cell_types
+    posterior = normalize_posterior_matrix(posterior, nrow(density_fit$transcript_basis_id))
+    if (is.null(colnames(posterior))) {
+        colnames(posterior) = cell_types
+    }
+    if (!identical(colnames(posterior), cell_types)) {
+        posterior = posterior[, cell_types, drop = FALSE]
+    }
+    support = compute_basis_type_support(
+        transcript_basis_id = density_fit$transcript_basis_id,
+        transcript_basis_weight = density_fit$transcript_basis_weight,
+        posterior = posterior,
+        n_basis = nrow(basis_points)
+    )
+    active_start_matrix = support > min_posterior_support
+    active_cell_types = cell_types[colSums(active_start_matrix) > 0L]
+    if (length(active_cell_types) == 0L) {
+        stop("No cell types had active basis starts at the requested min_posterior_support.", call. = FALSE)
+    }
 
     if (show_progress) {
         message("Running basis watershed by cell type...")
     }
     n_basis = nrow(basis_points)
-    K = ncol(type_density)
-    parent = matrix(NA_integer_, nrow = n_basis, ncol = K, dimnames = list(NULL, cell_types))
-    basin = matrix(NA_integer_, nrow = n_basis, ncol = K, dimnames = list(NULL, cell_types))
-    zero_js = rep(0, nrow(basis_edges))
-    for (k in seq_len(K)) {
-        ascent = density_ascent_partition_cpp(
+    parent = vector("list", length(active_cell_types))
+    root = vector("list", length(active_cell_types))
+    basin = vector("list", length(active_cell_types))
+    mode_basis = vector("list", length(active_cell_types))
+    type_density = vector("list", length(active_cell_types))
+    active_start = vector("list", length(active_cell_types))
+    names(parent) = names(root) = names(basin) = names(mode_basis) =
+        names(type_density) = names(active_start) = active_cell_types
+    for (cell_type in active_cell_types) {
+        type_density[[cell_type]] = total_density * spatial_prior[, cell_type]
+        active_start[[cell_type]] = active_start_matrix[, cell_type]
+        ascent = density_ascent_active_partition_cpp(
             as.integer(basis_edges$from),
             as.integer(basis_edges$to),
             as.numeric(basis_edges$distance),
-            type_density[, k],
-            zero_js,
-            distance_weight,
-            0
+            type_density[[cell_type]],
+            active_start[[cell_type]],
+            distance_weight
         )
-        parent[, k] = ascent$parent
-        basin[, k] = ascent$basin
+        parent[[cell_type]] = ascent$parent
+        root[[cell_type]] = ascent$root
+        basin[[cell_type]] = ascent$basin
+        mode_basis[[cell_type]] = ascent$mode_basis
     }
-    transcript_assignment = NULL
-    if (!is.null(density_fit$transcript_basis_id)) {
-        transcript_assignment = assign_transcripts_to_basis_basins(
-            transcript_basis_id = density_fit$transcript_basis_id,
-            type_density = type_density,
-            basin = basin,
-            cell_types = cell_types
-        )
-    }
+    transcript_assignment = assign_transcripts_to_basis_basins(
+        transcript_basis_id = density_fit$transcript_basis_id,
+        type_density = type_density,
+        basin = basin,
+        active_start = active_start,
+        cell_types = active_cell_types
+    )
 
     list(
         basis_points = basis_points,
@@ -287,17 +398,131 @@ partition_basis_watershed_initial <- function(
         basis_edges = basis_edges,
         total_density_basis = total_density,
         spatial_prior_basis = spatial_prior,
+        posterior_support_basis = support,
+        active_start = active_start,
+        active_cell_types = active_cell_types,
         type_density_basis = type_density,
         parent = parent,
+        root = root,
         basin = basin,
+        mode_basis = mode_basis,
         transcript_mode_basis = transcript_assignment$transcript_mode_basis,
         transcript_basin = transcript_assignment$transcript_basin,
-        basin_summary = summarize_basis_basins(basin, parent, type_density, cell_types),
+        basin_summary = summarize_active_basis_basins(basin, mode_basis, active_start, type_density, active_cell_types),
         parameters = list(
+            min_posterior_support = min_posterior_support,
             distance_weight = distance_weight,
             prior_outside = prior_outside,
             density_basis_subdivision = density_fit$parameters$basis_subdivision,
             density_quadrature_subdivision = density_fit$parameters$quadrature_subdivision
         )
+    )
+}
+
+#' Collect transcript genes into basis-watershed basin counts
+#'
+#' Builds a sparse gene-by-basin count matrix from the transcript assignments
+#' returned by [partition_basis_watershed_initial()].
+#'
+#' @param basis_partition Result from [partition_basis_watershed_initial()].
+#' @param transcripts_df Transcript-level data frame corresponding to the
+#'   density and segmentation fits.
+#' @param posterior Optional transcript-by-cell-type posterior matrix. Required
+#'   for `mode = "weighted"` and used for max-posterior assignment in
+#'   `mode = "max_posterior"`. If `NULL`, `mode = "max_posterior"` uses the
+#'   active cell type with the largest basis-watershed type density at each
+#'   transcript's selected mode basis point.
+#' @param gene Character gene column name.
+#' @param mode Character; `"max_posterior"` assigns each transcript once to its
+#'   maximum-posterior cell type, while `"weighted"` contributes posterior
+#'   weight to each active cell type with a valid transcript basin.
+#'
+#' @return Sparse `dgCMatrix` with genes in rows and `celltype-modebasis`
+#'   initial watershed cells in columns.
+#' @export
+basis_watershed_gene_counts <- function(
+    basis_partition,
+    transcripts_df,
+    posterior = NULL,
+    gene = "feature_name",
+    mode = c("max_posterior", "weighted")
+) {
+    mode = match.arg(mode)
+    if (!gene %in% colnames(transcripts_df)) {
+        stop("Column '", gene, "' not found in transcripts_df.", call. = FALSE)
+    }
+    if (is.null(basis_partition$transcript_basin) || is.null(basis_partition$basin_summary)) {
+        stop("basis_partition must contain transcript_basin and basin_summary.", call. = FALSE)
+    }
+    cell_types = colnames(basis_partition$transcript_basin)
+    n = nrow(basis_partition$transcript_basin)
+    if (nrow(transcripts_df) != n) {
+        stop("transcripts_df must have one row per transcript assignment.", call. = FALSE)
+    }
+    if (!is.null(posterior)) {
+        posterior = normalize_posterior_matrix(posterior, n)
+        if (is.null(colnames(posterior))) {
+            stop("posterior must have column names matching cell types.", call. = FALSE)
+        }
+    } else if (mode == "weighted") {
+        stop("posterior is required when mode = 'weighted'.", call. = FALSE)
+    }
+
+    gene_values = as.character(transcripts_df[[gene]])
+    gene_levels = sort(unique(gene_values))
+    gene_id = match(gene_values, gene_levels)
+    cell_levels = as.character(basis_partition$basin_summary$cell)
+    cell_id_lookup = seq_along(cell_levels)
+    names(cell_id_lookup) = cell_levels
+    basin_lookup = basin_cell_lookup(basis_partition)
+
+    ii = integer()
+    jj = integer()
+    xx = numeric()
+
+    if (mode == "max_posterior") {
+        if (!is.null(posterior)) {
+            max_type = colnames(posterior)[max.col(posterior, ties.method = "first")]
+        } else {
+            score = matrix(-Inf, nrow = n, ncol = length(cell_types), dimnames = list(NULL, cell_types))
+            for (cell_type in cell_types) {
+                mode_basis = basis_partition$transcript_mode_basis[, cell_type]
+                ok = !is.na(mode_basis)
+                score[ok, cell_type] = basis_partition$type_density_basis[[cell_type]][mode_basis[ok]]
+            }
+            max_type = colnames(score)[max.col(score, ties.method = "first")]
+        }
+        for (cell_type in cell_types) {
+            rows = which(max_type == cell_type & !is.na(basis_partition$transcript_basin[, cell_type]))
+            if (length(rows) == 0L) next
+            cell_name = basin_lookup[[cell_type]][as.character(basis_partition$transcript_basin[rows, cell_type])]
+            keep = !is.na(cell_name)
+            rows = rows[keep]
+            cell_name = cell_name[keep]
+            ii = c(ii, gene_id[rows])
+            jj = c(jj, unname(cell_id_lookup[cell_name]))
+            xx = c(xx, rep(1, length(rows)))
+        }
+    } else {
+        for (cell_type in cell_types) {
+            if (!cell_type %in% colnames(posterior)) next
+            rows = which(!is.na(basis_partition$transcript_basin[, cell_type]) & posterior[, cell_type] > 0)
+            if (length(rows) == 0L) next
+            cell_name = basin_lookup[[cell_type]][as.character(basis_partition$transcript_basin[rows, cell_type])]
+            keep = !is.na(cell_name)
+            rows = rows[keep]
+            cell_name = cell_name[keep]
+            ii = c(ii, gene_id[rows])
+            jj = c(jj, unname(cell_id_lookup[cell_name]))
+            xx = c(xx, posterior[rows, cell_type])
+        }
+    }
+
+    Matrix::sparseMatrix(
+        i = ii,
+        j = jj,
+        x = xx,
+        dims = c(length(gene_levels), length(cell_levels)),
+        dimnames = list(gene_levels, cell_levels)
     )
 }

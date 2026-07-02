@@ -393,6 +393,102 @@ List density_ascent_partition_cpp(
     );
 }
 
+//' Assign active graph nodes to density modes by ascent
+//'
+//' Internal C++ helper for basis-level watershed partitioning. Parents are
+//' computed over all graph nodes, but basin labels are assigned only for
+//' active starts. Inactive nodes can therefore be used as pass-through nodes
+//' along ascent paths without producing their own output basins.
+//'
+//' @keywords internal
+//' @noRd
+// [[Rcpp::export]]
+List density_ascent_active_partition_cpp(
+    const IntegerVector& from,
+    const IntegerVector& to,
+    const NumericVector& distance,
+    const NumericVector& density,
+    const LogicalVector& active_start,
+    const double distance_weight
+) {
+    const int n = density.size();
+    const R_xlen_t E = from.size();
+    if (to.size() != E || distance.size() != E) {
+        stop("from, to, and distance must have the same length.");
+    }
+    if (active_start.size() != n) {
+        stop("active_start must have one value per graph node.");
+    }
+
+    std::vector<int> parent(n);
+    std::vector<double> best_score(n, -std::numeric_limits<double>::infinity());
+    for (int i = 0; i < n; ++i) {
+        parent[i] = i;
+    }
+
+    auto update_parent = [&](const int i, const int j, const double dist) {
+        if (density[j] <= density[i]) {
+            return;
+        }
+        const double score = (density[j] - density[i]) - distance_weight * dist;
+        if (score > best_score[i]) {
+            best_score[i] = score;
+            parent[i] = j;
+        }
+    };
+
+    for (R_xlen_t e = 0; e < E; ++e) {
+        const int a = from[e] - 1;
+        const int b = to[e] - 1;
+        update_parent(a, b, distance[e]);
+        update_parent(b, a, distance[e]);
+    }
+
+    std::vector<int> root(n);
+    for (int i = 0; i < n; ++i) {
+        root[i] = find_root(parent, i);
+    }
+
+    std::vector<int> unique_active_roots;
+    unique_active_roots.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        if (active_start[i] == TRUE) {
+            unique_active_roots.push_back(root[i]);
+        }
+    }
+    std::sort(unique_active_roots.begin(), unique_active_roots.end());
+    unique_active_roots.erase(
+        std::unique(unique_active_roots.begin(), unique_active_roots.end()),
+        unique_active_roots.end()
+    );
+
+    IntegerVector parent_out(n);
+    IntegerVector root_out(n);
+    IntegerVector basin(n, NA_INTEGER);
+    for (int i = 0; i < n; ++i) {
+        parent_out[i] = parent[i] + 1;
+        root_out[i] = root[i] + 1;
+        if (active_start[i] == TRUE) {
+            basin[i] = static_cast<int>(
+                std::lower_bound(unique_active_roots.begin(), unique_active_roots.end(), root[i]) -
+                unique_active_roots.begin()
+            ) + 1;
+        }
+    }
+
+    IntegerVector mode_basis(unique_active_roots.size());
+    for (std::size_t i = 0; i < unique_active_roots.size(); ++i) {
+        mode_basis[i] = unique_active_roots[i] + 1;
+    }
+
+    return List::create(
+        _["parent"] = parent_out,
+        _["root"] = root_out,
+        _["basin"] = basin,
+        _["mode_basis"] = mode_basis
+    );
+}
+
 struct BasinPairStats {
     int a;
     int b;
