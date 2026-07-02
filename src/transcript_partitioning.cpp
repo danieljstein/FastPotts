@@ -13,6 +13,11 @@ static inline std::uint64_t basin_pair_key(const int a0, const int b0) {
         static_cast<std::uint32_t>(b0);
 }
 
+static inline std::uint64_t node_pair_key(const int a0, const int b0) {
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(a0)) << 32) |
+        static_cast<std::uint32_t>(b0);
+}
+
 static inline double safe_prob(const double x, const double eps) {
     return x < eps ? eps : x;
 }
@@ -53,6 +58,178 @@ static int find_root(std::vector<int>& parent, int x) {
         x = next;
     }
     return root;
+}
+
+struct EdgeStats {
+    int from;
+    int to;
+    double distance;
+
+    EdgeStats() : from(0), to(0), distance(std::numeric_limits<double>::infinity()) {}
+    EdgeStats(const int from_, const int to_, const double distance_) :
+        from(from_), to(to_), distance(distance_) {}
+};
+
+//' Compact directed KNN results into undirected graph edges
+//'
+//' Internal C++ helper for `partition_transcripts_watershed()`.
+//'
+//' @keywords internal
+//' @noRd
+// [[Rcpp::export]]
+DataFrame compact_knn_edges_cpp(
+    const IntegerMatrix& nn_idx,
+    const NumericMatrix& nn_dist,
+    const IntegerVector& query_index,
+    const int n_nodes,
+    const double max_distance
+) {
+    const int n_query = nn_idx.nrow();
+    const int k = nn_idx.ncol();
+    if (nn_dist.nrow() != n_query || nn_dist.ncol() != k) {
+        stop("nn_idx and nn_dist must have the same dimensions.");
+    }
+    if (query_index.size() != n_query) {
+        stop("query_index must have one entry per nearest-neighbor query row.");
+    }
+
+    std::unordered_map<std::uint64_t, EdgeStats> edges;
+    edges.reserve(static_cast<std::size_t>(n_query) * static_cast<std::size_t>(k));
+
+    for (int i = 0; i < n_query; ++i) {
+        const int q = query_index[i] - 1;
+        if (q < 0 || q >= n_nodes) {
+            stop("query_index contains an out-of-range node index.");
+        }
+        for (int j = 0; j < k; ++j) {
+            const int nbr = nn_idx(i, j) - 1;
+            const double dist = nn_dist(i, j);
+            if (nbr < 0 || nbr >= n_nodes || nbr == q) {
+                continue;
+            }
+            if (!R_finite(dist) || dist > max_distance) {
+                continue;
+            }
+
+            int a = q;
+            int b = nbr;
+            if (a > b) {
+                std::swap(a, b);
+            }
+            const std::uint64_t key = node_pair_key(a, b);
+            auto it = edges.find(key);
+            if (it == edges.end()) {
+                edges.emplace(key, EdgeStats(a, b, dist));
+            } else if (dist < it->second.distance) {
+                it->second.distance = dist;
+            }
+        }
+    }
+
+    std::vector<EdgeStats> rows;
+    rows.reserve(edges.size());
+    for (const auto& kv : edges) {
+        rows.push_back(kv.second);
+    }
+    std::sort(
+        rows.begin(),
+        rows.end(),
+        [](const EdgeStats& lhs, const EdgeStats& rhs) {
+            if (lhs.from != rhs.from) return lhs.from < rhs.from;
+            return lhs.to < rhs.to;
+        }
+    );
+
+    const int E = rows.size();
+    IntegerVector from(E);
+    IntegerVector to(E);
+    NumericVector distance(E);
+    for (int e = 0; e < E; ++e) {
+        from[e] = rows[e].from + 1;
+        to[e] = rows[e].to + 1;
+        distance[e] = rows[e].distance;
+    }
+
+    return DataFrame::create(
+        _["from"] = from,
+        _["to"] = to,
+        _["distance"] = distance
+    );
+}
+
+//' Compact an edge list into unique undirected graph edges
+//'
+//' Internal C++ helper for `partition_transcripts_watershed()`.
+//'
+//' @keywords internal
+//' @noRd
+// [[Rcpp::export]]
+DataFrame compact_undirected_edges_cpp(
+    const IntegerVector& from,
+    const IntegerVector& to,
+    const NumericVector& distance,
+    const int n_nodes,
+    const double max_distance
+) {
+    const R_xlen_t E_in = from.size();
+    if (to.size() != E_in || distance.size() != E_in) {
+        stop("from, to, and distance must have the same length.");
+    }
+
+    std::unordered_map<std::uint64_t, EdgeStats> edges;
+    edges.reserve(static_cast<std::size_t>(E_in));
+
+    for (R_xlen_t e = 0; e < E_in; ++e) {
+        int a = from[e] - 1;
+        int b = to[e] - 1;
+        const double dist = distance[e];
+        if (a < 0 || a >= n_nodes || b < 0 || b >= n_nodes || a == b) {
+            continue;
+        }
+        if (!R_finite(dist) || dist > max_distance) {
+            continue;
+        }
+        if (a > b) {
+            std::swap(a, b);
+        }
+        const std::uint64_t key = node_pair_key(a, b);
+        auto it = edges.find(key);
+        if (it == edges.end()) {
+            edges.emplace(key, EdgeStats(a, b, dist));
+        } else if (dist < it->second.distance) {
+            it->second.distance = dist;
+        }
+    }
+
+    std::vector<EdgeStats> rows;
+    rows.reserve(edges.size());
+    for (const auto& kv : edges) {
+        rows.push_back(kv.second);
+    }
+    std::sort(
+        rows.begin(),
+        rows.end(),
+        [](const EdgeStats& lhs, const EdgeStats& rhs) {
+            if (lhs.from != rhs.from) return lhs.from < rhs.from;
+            return lhs.to < rhs.to;
+        }
+    );
+
+    const int E = rows.size();
+    IntegerVector out_from(E);
+    IntegerVector out_to(E);
+    NumericVector out_distance(E);
+    for (int e = 0; e < E; ++e) {
+        out_from[e] = rows[e].from + 1;
+        out_to[e] = rows[e].to + 1;
+        out_distance[e] = rows[e].distance;
+    }
+
+    return DataFrame::create(
+        _["from"] = out_from,
+        _["to"] = out_to,
+        _["distance"] = out_distance
+    );
 }
 
 //' Estimate graph transcript density

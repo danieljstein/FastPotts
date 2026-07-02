@@ -318,6 +318,26 @@ spatial_log_density_predict_cpp <- function(par, basis_id, basis_weight, n_threa
     .Call(`_FastPotts_spatial_log_density_predict_cpp`, par, basis_id, basis_weight, n_threads)
 }
 
+#' Compact directed KNN results into undirected graph edges
+#'
+#' Internal C++ helper for `partition_transcripts_watershed()`.
+#'
+#' @keywords internal
+#' @noRd
+compact_knn_edges_cpp <- function(nn_idx, nn_dist, query_index, n_nodes, max_distance) {
+    .Call(`_FastPotts_compact_knn_edges_cpp`, nn_idx, nn_dist, query_index, n_nodes, max_distance)
+}
+
+#' Compact an edge list into unique undirected graph edges
+#'
+#' Internal C++ helper for `partition_transcripts_watershed()`.
+#'
+#' @keywords internal
+#' @noRd
+compact_undirected_edges_cpp <- function(from, to, distance, n_nodes, max_distance) {
+    .Call(`_FastPotts_compact_undirected_edges_cpp`, from, to, distance, n_nodes, max_distance)
+}
+
 #' Estimate graph transcript density
 #'
 #' Internal C++ helper for `partition_transcripts_watershed()`.

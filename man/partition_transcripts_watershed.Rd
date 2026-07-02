@@ -13,6 +13,7 @@ partition_transcripts_watershed(
   use_z = z \%in\% colnames(transcripts_df),
   n_neighbors = 20L,
   max_distance = Inf,
+  knn_chunk_size = 100000L,
   density_bandwidth = NULL,
   density_mode = c("type_weighted", "total"),
   density = NULL,
@@ -54,6 +55,10 @@ probabilities, such as \code{fit$marginals} from
 graph.}
 
 \item{max_distance}{Numeric maximum graph edge distance.}
+
+\item{knn_chunk_size}{Number of transcript queries per nearest-neighbor
+batch. Smaller values reduce peak memory during graph construction at the
+cost of more RANN calls. Set to \code{NULL} to query all transcripts at once.}
 
 \item{density_bandwidth}{Numeric kernel bandwidth. If \code{NULL}, uses the
 median graph edge distance.}

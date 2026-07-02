@@ -265,6 +265,36 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// compact_knn_edges_cpp
+DataFrame compact_knn_edges_cpp(const IntegerMatrix& nn_idx, const NumericMatrix& nn_dist, const IntegerVector& query_index, const int n_nodes, const double max_distance);
+RcppExport SEXP _FastPotts_compact_knn_edges_cpp(SEXP nn_idxSEXP, SEXP nn_distSEXP, SEXP query_indexSEXP, SEXP n_nodesSEXP, SEXP max_distanceSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type nn_idx(nn_idxSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type nn_dist(nn_distSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type query_index(query_indexSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_nodes(n_nodesSEXP);
+    Rcpp::traits::input_parameter< const double >::type max_distance(max_distanceSEXP);
+    rcpp_result_gen = Rcpp::wrap(compact_knn_edges_cpp(nn_idx, nn_dist, query_index, n_nodes, max_distance));
+    return rcpp_result_gen;
+END_RCPP
+}
+// compact_undirected_edges_cpp
+DataFrame compact_undirected_edges_cpp(const IntegerVector& from, const IntegerVector& to, const NumericVector& distance, const int n_nodes, const double max_distance);
+RcppExport SEXP _FastPotts_compact_undirected_edges_cpp(SEXP fromSEXP, SEXP toSEXP, SEXP distanceSEXP, SEXP n_nodesSEXP, SEXP max_distanceSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerVector& >::type from(fromSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type to(toSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type distance(distanceSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_nodes(n_nodesSEXP);
+    Rcpp::traits::input_parameter< const double >::type max_distance(max_distanceSEXP);
+    rcpp_result_gen = Rcpp::wrap(compact_undirected_edges_cpp(from, to, distance, n_nodes, max_distance));
+    return rcpp_result_gen;
+END_RCPP
+}
 // estimate_graph_density_cpp
 NumericVector estimate_graph_density_cpp(const IntegerVector& from, const IntegerVector& to, const NumericVector& distance, const NumericMatrix& posterior, const double bandwidth, const int mode);
 RcppExport SEXP _FastPotts_estimate_graph_density_cpp(SEXP fromSEXP, SEXP toSEXP, SEXP distanceSEXP, SEXP posteriorSEXP, SEXP bandwidthSEXP, SEXP modeSEXP) {
@@ -361,6 +391,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_spatial_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_density_predict_cpp, 11},
     {"_FastPotts_spatial_log_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_objective_cpp, 15},
     {"_FastPotts_spatial_log_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_predict_cpp, 4},
+    {"_FastPotts_compact_knn_edges_cpp", (DL_FUNC) &_FastPotts_compact_knn_edges_cpp, 5},
+    {"_FastPotts_compact_undirected_edges_cpp", (DL_FUNC) &_FastPotts_compact_undirected_edges_cpp, 5},
     {"_FastPotts_estimate_graph_density_cpp", (DL_FUNC) &_FastPotts_estimate_graph_density_cpp, 6},
     {"_FastPotts_posterior_js_divergence_edges_cpp", (DL_FUNC) &_FastPotts_posterior_js_divergence_edges_cpp, 4},
     {"_FastPotts_density_ascent_partition_cpp", (DL_FUNC) &_FastPotts_density_ascent_partition_cpp, 7},

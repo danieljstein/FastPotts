@@ -32,37 +32,54 @@ posterior_js_divergence_edges <- function(posterior, from, to, eps = 1e-12) {
     posterior_js_divergence_edges_cpp(posterior, from, to, eps)
 }
 
-build_transcript_knn_edges <- function(coords, n_neighbors, max_distance = Inf) {
+build_transcript_knn_edges <- function(coords, n_neighbors, max_distance = Inf, chunk_size = 100000L) {
     n = nrow(coords)
     if (n < 2L) {
         stop("At least two transcripts are required to build a neighborhood graph.", call. = FALSE)
     }
     n_neighbors = min(as.integer(n_neighbors), n - 1L)
-    nn = RANN::nn2(coords, k = n_neighbors + 1L)
+    if (is.null(chunk_size)) {
+        chunk_size = n
+    }
+    if (
+        length(chunk_size) != 1L ||
+        !is.finite(chunk_size) ||
+        chunk_size < 1 ||
+        chunk_size != as.integer(chunk_size)
+    ) {
+        stop("knn_chunk_size must be NULL or a positive integer.", call. = FALSE)
+    }
+    chunk_size = as.integer(chunk_size)
 
-    from = rep(seq_len(n), times = n_neighbors)
-    to = as.vector(nn$nn.idx[, -1L, drop = FALSE])
-    distance = as.vector(nn$nn.dists[, -1L, drop = FALSE])
+    starts = seq.int(1L, n, by = chunk_size)
+    chunks = vector("list", length(starts))
+    for (chunk_i in seq_along(starts)) {
+        idx = starts[chunk_i]:min(n, starts[chunk_i] + chunk_size - 1L)
+        nn = RANN::nn2(
+            data = coords,
+            query = coords[idx, , drop = FALSE],
+            k = n_neighbors + 1L
+        )
+        chunks[[chunk_i]] = compact_knn_edges_cpp(
+            nn_idx = nn$nn.idx,
+            nn_dist = nn$nn.dists,
+            query_index = idx,
+            n_nodes = n,
+            max_distance = max_distance
+        )
+    }
 
-    keep = to > 0L & from != to & distance <= max_distance
-    from = from[keep]
-    to = to[keep]
-    distance = distance[keep]
+    edge_n = vapply(chunks, nrow, integer(1L))
+    if (sum(edge_n) == 0L) {
+        return(data.frame(from = integer(), to = integer(), distance = numeric()))
+    }
 
-    lo = pmin(from, to)
-    hi = pmax(from, to)
-    key = lo * (n + 1) + hi
-    ord = order(key, distance)
-    lo = lo[ord]
-    hi = hi[ord]
-    distance = distance[ord]
-    key = key[ord]
-    keep_first = !duplicated(key)
-
-    data.frame(
-        from = lo[keep_first],
-        to = hi[keep_first],
-        distance = distance[keep_first]
+    compact_undirected_edges_cpp(
+        from = unlist(lapply(chunks, `[[`, "from"), use.names = FALSE),
+        to = unlist(lapply(chunks, `[[`, "to"), use.names = FALSE),
+        distance = unlist(lapply(chunks, `[[`, "distance"), use.names = FALSE),
+        n_nodes = n,
+        max_distance = max_distance
     )
 }
 
@@ -640,6 +657,9 @@ estimate_prior_cell_type_counts <- function(
 #' @param n_neighbors Integer number of nearest neighbors for the transcript
 #'   graph.
 #' @param max_distance Numeric maximum graph edge distance.
+#' @param knn_chunk_size Number of transcript queries per nearest-neighbor
+#'   batch. Smaller values reduce peak memory during graph construction at the
+#'   cost of more RANN calls. Set to `NULL` to query all transcripts at once.
 #' @param density_bandwidth Numeric kernel bandwidth. If `NULL`, uses the
 #'   median graph edge distance.
 #' @param density_mode Character; `"type_weighted"` uses posterior-weighted
@@ -707,6 +727,7 @@ partition_transcripts_watershed <- function(
     use_z = z %in% colnames(transcripts_df),
     n_neighbors = 20L,
     max_distance = Inf,
+    knn_chunk_size = 100000L,
     density_bandwidth = NULL,
     density_mode = c("type_weighted", "total"),
     density = NULL,
@@ -750,6 +771,17 @@ partition_transcripts_watershed <- function(
     if (n_neighbors < 1L) {
         stop("n_neighbors must be at least 1.", call. = FALSE)
     }
+    if (!is.null(knn_chunk_size) && (
+        length(knn_chunk_size) != 1L ||
+        !is.finite(knn_chunk_size) ||
+        knn_chunk_size < 1 ||
+        knn_chunk_size != as.integer(knn_chunk_size)
+    )) {
+        stop("knn_chunk_size must be NULL or a positive integer.", call. = FALSE)
+    }
+    if (!is.null(knn_chunk_size)) {
+        knn_chunk_size = as.integer(knn_chunk_size)
+    }
     if (length(max_distance) != 1L || is.na(max_distance) || max_distance <= 0) {
         stop("max_distance must be a positive numeric scalar or Inf.", call. = FALSE)
     }
@@ -790,7 +822,12 @@ partition_transcripts_watershed <- function(
     if (show_progress) {
         message("Building transcript neighborhood graph...")
     }
-    edges = build_transcript_knn_edges(coords, n_neighbors = n_neighbors, max_distance = max_distance)
+    edges = build_transcript_knn_edges(
+        coords,
+        n_neighbors = n_neighbors,
+        max_distance = max_distance,
+        chunk_size = knn_chunk_size
+    )
     if (nrow(edges) == 0L) {
         stop("No transcript graph edges were retained.", call. = FALSE)
     }
@@ -937,6 +974,7 @@ partition_transcripts_watershed <- function(
         parameters = list(
             n_neighbors = n_neighbors,
             max_distance = max_distance,
+            knn_chunk_size = knn_chunk_size,
             density_bandwidth = density_bandwidth,
             density_mode = density_mode,
             density_source = density_source,
