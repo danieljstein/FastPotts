@@ -629,6 +629,249 @@ List spatial_log_density_objective_cpp(
 
 //' @noRd
 // [[Rcpp::export]]
+List spatial_log_density_objective_simplex_cpp(
+    const NumericVector& par,
+    const IntegerMatrix& obs_basis_id,
+    const NumericMatrix& obs_basis_weight,
+    const IntegerMatrix& simplex_basis_id,
+    const NumericVector& simplex_volume,
+    const IntegerVector& edge_from,
+    const IntegerVector& edge_to,
+    const NumericVector& edge_distance,
+    const double lambda,
+    const int regularization,
+    const double delta,
+    const double sigma,
+    const double lambda_laplacian,
+    const double taylor_radius,
+    const double close_tol,
+    const double taylor_tol,
+    const int taylor_max_terms,
+    const int gauss_order,
+    const int n_threads
+) {
+    const int n_obs = obs_basis_id.nrow();
+    const int n_simplex = simplex_basis_id.nrow();
+    const int n_active = obs_basis_id.ncol();
+    const int n_basis = par.size();
+    const int n_edges = edge_from.size();
+
+    if (n_active != 3 && n_active != 4) {
+        stop("obs_basis_id must have three columns for triangles or four columns for tetrahedra.");
+    }
+    if (obs_basis_weight.nrow() != n_obs || obs_basis_weight.ncol() != n_active) {
+        stop("obs_basis_weight dimensions do not match obs_basis_id.");
+    }
+    if (simplex_basis_id.ncol() != n_active) {
+        stop("simplex_basis_id must have the same number of columns as obs_basis_id.");
+    }
+    if (simplex_volume.size() != n_simplex) {
+        stop("simplex_volume must have one value per simplex.");
+    }
+    if (edge_to.size() != n_edges || edge_distance.size() != n_edges) {
+        stop("edge vectors must have matching lengths.");
+    }
+    if (regularization < 0 || regularization > 2) {
+        stop("regularization must be 0, 1, or 2.");
+    }
+    if (!R_finite(delta) || delta <= 0.0) {
+        stop("delta must be a positive finite number.");
+    }
+    if (!R_finite(sigma) || sigma <= 0.0) {
+        stop("sigma must be a positive finite number.");
+    }
+    if (!R_finite(lambda_laplacian) || lambda_laplacian < 0.0) {
+        stop("lambda_laplacian must be a non-negative finite number.");
+    }
+    if (!R_finite(taylor_radius) || taylor_radius < 0.0) {
+        stop("taylor_radius must be a non-negative finite number.");
+    }
+    if (!R_finite(close_tol) || close_tol < 0.0) {
+        stop("close_tol must be a non-negative finite number.");
+    }
+    if (!R_finite(taylor_tol) || taylor_tol <= 0.0) {
+        stop("taylor_tol must be a positive finite number.");
+    }
+    if (taylor_max_terms < 0) {
+        stop("taylor_max_terms must be non-negative.");
+    }
+    if (gauss_order < 2) {
+        stop("gauss_order must be at least 2.");
+    }
+
+    const int actual_threads = log_density_resolve_threads(n_threads);
+    std::vector<double> objective_by_thread(actual_threads, 0.0);
+    std::vector< std::vector<double> > grad_by_thread(
+        actual_threads,
+        std::vector<double>(n_basis, 0.0)
+    );
+
+#ifdef _OPENMP
+#pragma omp parallel num_threads(actual_threads)
+#endif
+    {
+#ifdef _OPENMP
+        const int tid = omp_get_thread_num();
+#else
+        const int tid = 0;
+#endif
+        double local_objective = 0.0;
+        std::vector<double>& local_grad = grad_by_thread[tid];
+
+#ifdef _OPENMP
+#pragma omp for
+#endif
+        for (int i = 0; i < n_obs; ++i) {
+            const double eta = evaluate_eta_point(i, obs_basis_id, obs_basis_weight, par);
+            local_objective -= eta;
+            for (int a = 0; a < n_active; ++a) {
+                local_grad[obs_basis_id(i, a)] -= obs_basis_weight(i, a);
+            }
+        }
+
+#ifdef _OPENMP
+#pragma omp for
+#endif
+        for (int i = 0; i < n_simplex; ++i) {
+            std::vector<double> h_i(n_active);
+            for (int a = 0; a < n_active; ++a) {
+                h_i[a] = par[simplex_basis_id(i, a)];
+            }
+            std::vector<double> grad_i(n_active, 0.0);
+            int method_i = 0;
+            const double integral_i = simplex_log_density_integral_one(
+                h_i,
+                simplex_volume[i],
+                grad_i,
+                taylor_radius,
+                close_tol,
+                taylor_tol,
+                taylor_max_terms,
+                gauss_order,
+                method_i
+            );
+            local_objective += integral_i;
+            for (int a = 0; a < n_active; ++a) {
+                local_grad[simplex_basis_id(i, a)] += grad_i[a];
+            }
+        }
+
+        objective_by_thread[tid] = local_objective;
+    }
+
+    double objective = 0.0;
+    std::vector<double> grad_full(n_basis, 0.0);
+    for (int tid = 0; tid < actual_threads; ++tid) {
+        objective += objective_by_thread[tid];
+        for (int j = 0; j < n_basis; ++j) {
+            grad_full[j] += grad_by_thread[tid][j];
+        }
+    }
+
+    const double inv_n = 1.0 / static_cast<double>(std::max(1, n_obs));
+    objective *= inv_n;
+    for (int j = 0; j < n_basis; ++j) {
+        grad_full[j] *= inv_n;
+    }
+
+    if (lambda > 0.0 && n_edges > 0) {
+        const double scale = lambda / static_cast<double>(n_edges);
+        for (int e = 0; e < n_edges; ++e) {
+            const int a = edge_from[e];
+            const int b = edge_to[e];
+            const double distance = edge_distance[e];
+            const double slope = (par[a] - par[b]) / distance;
+            const double abs_slope = std::abs(slope);
+
+            double penalty = 0.0;
+            double derivative_wrt_slope = 0.0;
+            if (regularization == 0) {
+                penalty = 0.5 * slope * slope;
+                derivative_wrt_slope = slope;
+            } else if (regularization == 1) {
+                if (abs_slope <= delta) {
+                    penalty = 0.5 * slope * slope;
+                    derivative_wrt_slope = slope;
+                } else {
+                    penalty = delta * (abs_slope - 0.5 * delta);
+                    derivative_wrt_slope = delta * ((slope >= 0.0) ? 1.0 : -1.0);
+                }
+            } else {
+                const double scaled = slope / sigma;
+                const double denom = 1.0 + scaled * scaled;
+                const double attenuation = 1.0 / denom;
+                penalty = sigma * sigma * (1.0 - attenuation);
+                derivative_wrt_slope = 2.0 * slope / (denom * denom);
+            }
+
+            objective += scale * penalty;
+            const double derivative_wrt_diff = scale * derivative_wrt_slope / distance;
+            grad_full[a] += derivative_wrt_diff;
+            grad_full[b] -= derivative_wrt_diff;
+        }
+    }
+
+    if (lambda_laplacian > 0.0 && n_edges > 0) {
+        std::vector<double> neighbor_weight_sum(n_basis, 0.0);
+        std::vector<double> neighbor_weight(n_edges, 0.0);
+
+        for (int e = 0; e < n_edges; ++e) {
+            const int a = edge_from[e];
+            const int b = edge_to[e];
+            const double distance = edge_distance[e];
+            const double w = 1.0 / (distance * distance);
+            neighbor_weight[e] = w;
+            neighbor_weight_sum[a] += w;
+            neighbor_weight_sum[b] += w;
+        }
+
+        std::vector<double> laplacian(n_basis, 0.0);
+        for (int a = 0; a < n_basis; ++a) {
+            laplacian[a] = par[a];
+        }
+        for (int e = 0; e < n_edges; ++e) {
+            const int a = edge_from[e];
+            const int b = edge_to[e];
+            const double w = neighbor_weight[e];
+            if (neighbor_weight_sum[a] > 0.0) {
+                laplacian[a] -= w * par[b] / neighbor_weight_sum[a];
+            }
+            if (neighbor_weight_sum[b] > 0.0) {
+                laplacian[b] -= w * par[a] / neighbor_weight_sum[b];
+            }
+        }
+
+        const double scale = lambda_laplacian / static_cast<double>(n_basis);
+        for (int a = 0; a < n_basis; ++a) {
+            objective += 0.5 * scale * laplacian[a] * laplacian[a];
+            grad_full[a] += scale * laplacian[a];
+        }
+        for (int e = 0; e < n_edges; ++e) {
+            const int a = edge_from[e];
+            const int b = edge_to[e];
+            const double w = neighbor_weight[e];
+            if (neighbor_weight_sum[a] > 0.0) {
+                grad_full[b] -= scale * w * laplacian[a] / neighbor_weight_sum[a];
+            }
+            if (neighbor_weight_sum[b] > 0.0) {
+                grad_full[a] -= scale * w * laplacian[b] / neighbor_weight_sum[b];
+            }
+        }
+    }
+
+    NumericVector grad(n_basis);
+    for (int j = 0; j < n_basis; ++j) {
+        grad[j] = grad_full[j];
+    }
+
+    return List::create(
+        _["value"] = objective,
+        _["gradient"] = grad
+    );
+}
+
+//' @noRd
+// [[Rcpp::export]]
 List spatial_log_density_predict_cpp(
     const NumericVector& par,
     const IntegerMatrix& basis_id,

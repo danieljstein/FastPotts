@@ -1,3 +1,27 @@
+make_log_density_domain_simplex <- function(design) {
+    n_active = ncol(design$basis_id)
+    simplex_basis_id = t(apply(design$basis_id, 1L, sort))
+    if (n_active == 1L) {
+        simplex_key = as.character(simplex_basis_id[, 1L])
+    } else {
+        simplex_key = apply(simplex_basis_id, 1L, paste, collapse = ":")
+    }
+    first = match(unique(simplex_key), simplex_key)
+    simplex_basis_id = simplex_basis_id[first, , drop = FALSE]
+
+    volume = vapply(seq_len(nrow(simplex_basis_id)), function(i) {
+        ids = simplex_basis_id[i, ]
+        simplex_volume(design$basis_points[ids, , drop = FALSE])
+    }, numeric(1L))
+
+    list(
+        basis_id = simplex_basis_id,
+        volume = volume,
+        method = "analytic_simplex",
+        n_simplex = nrow(simplex_basis_id)
+    )
+}
+
 #' Fit a log-linear spatial transcript density field
 #'
 #' Fits a simplified inhomogeneous Poisson point-process density model on the
@@ -9,9 +33,9 @@
 #' \eta(x) = \sum_a \lambda_a(x) w_a.
 #' }
 #'
-#' The integral term is approximated by simplex-local quadrature over occupied
-#' simplexes. If `posterior` is supplied, transcript-level cell-type-specific
-#' densities are returned as `total_density * posterior`.
+#' The integral term is computed analytically over occupied simplexes. If
+#' `posterior` is supplied, transcript-level cell-type-specific densities are
+#' returned as `total_density * posterior`.
 #'
 #' @param transcripts_df Transcript-level data frame.
 #' @param posterior Optional numeric transcript-by-cell-type posterior matrix.
@@ -24,12 +48,12 @@
 #' @param s Positive spatial basis mesh size.
 #' @param x,y,z Character coordinate column names.
 #' @param origin Optional lattice origin.
-#' @param quadrature_subdivision Positive integer subdivision factor for
-#'   occupied-simplex quadrature.
-#' @param store_quadrature_coords Logical; if `TRUE`, store quadrature point
-#'   coordinates in the returned object. The fitting objective does not need
-#'   these coordinates, so the default `FALSE` is more memory efficient for
-#'   large 3D datasets.
+#' @param quadrature_subdivision Retained for compatibility with earlier
+#'   quadrature-based versions. The current objective integrates each occupied
+#'   simplex analytically and does not use this value.
+#' @param store_quadrature_coords Retained for compatibility with earlier
+#'   quadrature-based versions. The current objective does not store
+#'   quadrature-point coordinates.
 #' @param lambda Non-negative smoothing strength on neighboring basis-point
 #'   log-density slopes.
 #' @param regularization Character; one of `"quadratic"`, `"huber"`, or
@@ -48,8 +72,9 @@
 #' @param show_progress Logical; print progress messages.
 #'
 #' @return A list with fitted total density, optional cell-type density,
-#'   fitted basis coefficients, quadrature design, basis design, optimizer
-#'   result, and effective parameters.
+#'   fitted basis coefficients, analytic simplex domain, basis design,
+#'   transcript interpolation design, optimizer result, and effective
+#'   parameters.
 #' @export
 spatial_basis_log_density_field <- function(
     transcripts_df,
@@ -156,14 +181,9 @@ spatial_basis_log_density_field <- function(
     design = basis_design_from_barycentric(bary)
 
     if (show_progress) {
-        message("Building occupied-simplex quadrature...")
+        message("Building occupied-simplex integration domain...")
     }
-    quadrature = make_density_quadrature_simplex(
-        design = design,
-        d = d,
-        subdivision = quadrature_subdivision,
-        store_coords = store_quadrature_coords
-    )
+    domain = make_log_density_domain_simplex(design)
 
     if (show_progress) {
         message("Building basis edge design...")
@@ -172,21 +192,19 @@ spatial_basis_log_density_field <- function(
 
     obs_basis_id = design$basis_id - 1L
     obs_basis_weight = design$basis_weight
-    quad_basis_id = quadrature$basis_id - 1L
-    quad_basis_weight = quadrature$basis_weight
+    simplex_basis_id = domain$basis_id - 1L
 
-    volume = sum(quadrature$weight)
+    volume = sum(domain$volume)
     par0 = rep(log(pmax(nrow(coords) / volume, 1e-8)), nrow(design$basis_lattice))
     regularization_id = match(regularization, c("quadratic", "huber", "bounded")) - 1L
 
     objective = function(par) {
-        spatial_log_density_objective_cpp(
+        spatial_log_density_objective_simplex_cpp(
             par = par,
             obs_basis_id = obs_basis_id,
             obs_basis_weight = obs_basis_weight,
-            quad_basis_id = quad_basis_id,
-            quad_basis_weight = quad_basis_weight,
-            quad_weight = quadrature$weight,
+            simplex_basis_id = simplex_basis_id,
+            simplex_volume = domain$volume,
             edge_from = as.integer(basis_edges[, "from"] - 1L),
             edge_to = as.integer(basis_edges[, "to"] - 1L),
             edge_distance = as.numeric(basis_edges[, "distance"]),
@@ -195,6 +213,11 @@ spatial_basis_log_density_field <- function(
             delta = delta,
             sigma = sigma,
             lambda_laplacian = lambda_laplacian,
+            taylor_radius = 1,
+            close_tol = 1e-6,
+            taylor_tol = 1e-12,
+            taylor_max_terms = 80L,
+            gauss_order = 20L,
             n_threads = n_threads
         )
     }
@@ -230,18 +253,23 @@ spatial_basis_log_density_field <- function(
     list(
         density = density,
         total_density = total_density,
+        total_density_basis = as.numeric(exp(opt$par)),
         eta = eta,
         eta_basis = opt$par,
         posterior = posterior,
         basis_points = design$basis_points,
         basis_lattice = design$basis_lattice,
         basis_edges = basis_edges,
-        quadrature = quadrature,
+        transcript_basis_id = design$basis_id,
+        transcript_basis_weight = design$basis_weight,
+        domain = domain,
+        quadrature = NULL,
         optim = opt,
         parameters = list(
             basis = basis,
             s = s,
             origin = origin,
+            integration = "analytic_simplex",
             quadrature_subdivision = quadrature_subdivision,
             store_quadrature_coords = store_quadrature_coords,
             return_density = return_density,

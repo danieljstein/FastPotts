@@ -46,13 +46,13 @@ Set to \code{FALSE} for large datasets when only \code{total_density} is needed.
 
 \item{origin}{Optional lattice origin.}
 
-\item{quadrature_subdivision}{Positive integer subdivision factor for
-occupied-simplex quadrature.}
+\item{quadrature_subdivision}{Retained for compatibility with earlier
+quadrature-based versions. The current objective integrates each occupied
+simplex analytically and does not use this value.}
 
-\item{store_quadrature_coords}{Logical; if \code{TRUE}, store quadrature point
-coordinates in the returned object. The fitting objective does not need
-these coordinates, so the default \code{FALSE} is more memory efficient for
-large 3D datasets.}
+\item{store_quadrature_coords}{Retained for compatibility with earlier
+quadrature-based versions. The current objective does not store
+quadrature-point coordinates.}
 
 \item{lambda}{Non-negative smoothing strength on neighboring basis-point
 log-density slopes.}
@@ -81,8 +81,9 @@ default.}
 }
 \value{
 A list with fitted total density, optional cell-type density,
-fitted basis coefficients, quadrature design, basis design, optimizer
-result, and effective parameters.
+fitted basis coefficients, analytic simplex domain, basis design,
+transcript interpolation design, optimizer result, and effective
+parameters.
 }
 \description{
 Fits a simplified inhomogeneous Poisson point-process density model on the
@@ -95,7 +96,7 @@ same triangular or BCC barycentric basis used by
 \eta(x) = \sum_a \lambda_a(x) w_a.
 }
 
-The integral term is approximated by simplex-local quadrature over occupied
-simplexes. If \code{posterior} is supplied, transcript-level cell-type-specific
-densities are returned as \code{total_density * posterior}.
+The integral term is computed analytically over occupied simplexes. If
+\code{posterior} is supplied, transcript-level cell-type-specific densities are
+returned as \code{total_density * posterior}.
 }
