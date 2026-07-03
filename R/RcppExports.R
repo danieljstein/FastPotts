@@ -325,6 +325,18 @@ spatial_density_predict_cpp <- function(par, basis_id, basis_weight, edge_id, pa
     .Call(`_FastPotts_spatial_density_predict_cpp`, par, basis_id, basis_weight, edge_id, pair_from, pair_to, density_floor, n_basis, n_edge_coef, n_cell_types, n_threads)
 }
 
+#' Integrate a log-linear density over simplexes
+#'
+#' For each row of `h`, computes `volume * E[exp(sum_i lambda_i h_i)]`
+#' where `lambda` is uniform over the triangle or tetrahedron. The gradient
+#' columns are the derivatives with respect to the corresponding vertex values.
+#'
+#' @keywords internal
+#' @noRd
+simplex_log_density_integral_cpp <- function(h, volume, taylor_radius, close_tol, taylor_tol, taylor_max_terms, gauss_order, n_threads) {
+    .Call(`_FastPotts_simplex_log_density_integral_cpp`, h, volume, taylor_radius, close_tol, taylor_tol, taylor_max_terms, gauss_order, n_threads)
+}
+
 #' @noRd
 spatial_log_density_objective_cpp <- function(par, obs_basis_id, obs_basis_weight, quad_basis_id, quad_basis_weight, quad_weight, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, lambda_laplacian, n_threads) {
     .Call(`_FastPotts_spatial_log_density_objective_cpp`, par, obs_basis_id, obs_basis_weight, quad_basis_id, quad_basis_weight, quad_weight, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, lambda_laplacian, n_threads)
