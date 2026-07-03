@@ -29,6 +29,14 @@ basis_design_from_barycentric <- function(basis) {
 
 build_lattice_neighbor_edges <- function(basis_lattice, basis, s) {
     basis = match.arg(basis, c("tri", "bcc"))
+    basis_lattice = as.matrix(basis_lattice)
+    storage.mode(basis_lattice) = "integer"
+    basis_id = match(basis, c("tri", "bcc")) - 1L
+    build_lattice_neighbor_edges_cpp(basis_lattice, basis_id = basis_id, s = as.numeric(s))
+}
+
+build_lattice_neighbor_edges_r <- function(basis_lattice, basis, s) {
+    basis = match.arg(basis, c("tri", "bcc"))
     key = do.call(paste, c(as.data.frame(basis_lattice), sep = ":"))
     key_to_id = seq_along(key)
     names(key_to_id) = key

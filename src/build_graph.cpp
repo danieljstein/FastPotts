@@ -4,7 +4,30 @@
 #include <cstdint>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 using namespace Rcpp;
+
+struct LatticeKey {
+    int x;
+    int y;
+    int z;
+
+    bool operator==(const LatticeKey& other) const {
+        return x == other.x && y == other.y && z == other.z;
+    }
+};
+
+struct LatticeKeyHash {
+    std::size_t operator()(const LatticeKey& key) const {
+        std::uint64_t x = static_cast<std::uint32_t>(key.x);
+        std::uint64_t y = static_cast<std::uint32_t>(key.y);
+        std::uint64_t z = static_cast<std::uint32_t>(key.z);
+        std::uint64_t h = x * 0x9E3779B185EBCA87ULL;
+        h ^= y * 0xC2B2AE3D27D4EB4FULL + (h << 6) + (h >> 2);
+        h ^= z * 0x165667B19E3779F9ULL + (h << 6) + (h >> 2);
+        return static_cast<std::size_t>(h);
+    }
+};
 
 /*
  * Binary-search for a row index inside one CSC column.
@@ -41,6 +64,121 @@ static inline int find_in_col(
 static inline std::uint64_t edge_key(const int from, const int to) {
     return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(from)) << 32) |
         static_cast<std::uint32_t>(to);
+}
+
+//' Build lattice-neighbor edges from integer basis coordinates
+//'
+//' Internal helper for triangular and BCC spatial basis graphs. This avoids
+//' the large string-key and neighbor-matrix temporaries used by the R fallback.
+//'
+//' @param basis_lattice Integer matrix of basis lattice coordinates.
+//' @param basis_id Integer; 0 for triangular 2D, 1 for BCC 3D.
+//' @param s Positive mesh size.
+//'
+//' @return A data frame with one row per undirected edge and columns `from`,
+//'   `to`, and `distance`. Node indices are 1-based.
+//' @keywords internal
+//' @noRd
+// [[Rcpp::export]]
+DataFrame build_lattice_neighbor_edges_cpp(
+    const IntegerMatrix& basis_lattice,
+    const int basis_id,
+    const double s
+) {
+    const int n = basis_lattice.nrow();
+    const int d = basis_lattice.ncol();
+    if (basis_id == 0 && d != 2) {
+        stop("Triangular basis requires a two-column lattice matrix.");
+    }
+    if (basis_id == 1 && d != 3) {
+        stop("BCC basis requires a three-column lattice matrix.");
+    }
+    if (!R_finite(s) || s <= 0) {
+        stop("s must be a positive finite scalar.");
+    }
+
+    std::unordered_map<LatticeKey, int, LatticeKeyHash> lookup;
+    lookup.reserve(static_cast<std::size_t>(n) * 2);
+    for (int i = 0; i < n; ++i) {
+        LatticeKey key{
+            basis_lattice(i, 0),
+            basis_lattice(i, 1),
+            d == 3 ? basis_lattice(i, 2) : 0
+        };
+        lookup.emplace(key, i + 1);
+    }
+
+    std::vector<LatticeKey> offsets;
+    std::vector<double> offset_lengths;
+    if (basis_id == 0) {
+        offsets = {
+            {1, 0, 0},
+            {0, 1, 0},
+            {1, -1, 0}
+        };
+        offset_lengths.assign(offsets.size(), s);
+    } else {
+        offsets = {
+            {2, 0, 0},
+            {0, 2, 0},
+            {0, 0, 2},
+            {-1, -1, -1},
+            {1, -1, -1},
+            {-1, 1, -1},
+            {1, 1, -1},
+            {-1, -1, 1},
+            {1, -1, 1},
+            {-1, 1, 1},
+            {1, 1, 1}
+        };
+        offset_lengths.reserve(offsets.size());
+        for (const auto& offset : offsets) {
+            const double dx = offset.x * s / 2.0;
+            const double dy = offset.y * s / 2.0;
+            const double dz = offset.z * s / 2.0;
+            offset_lengths.push_back(std::sqrt(dx * dx + dy * dy + dz * dz));
+        }
+    }
+
+    std::vector<int> from;
+    std::vector<int> to;
+    std::vector<double> distance;
+    const std::size_t reserve_n = static_cast<std::size_t>(n) * offsets.size() / 2;
+    from.reserve(reserve_n);
+    to.reserve(reserve_n);
+    distance.reserve(reserve_n);
+
+    for (int i = 0; i < n; ++i) {
+        const LatticeKey base{
+            basis_lattice(i, 0),
+            basis_lattice(i, 1),
+            d == 3 ? basis_lattice(i, 2) : 0
+        };
+        const int from_id = i + 1;
+        for (std::size_t a = 0; a < offsets.size(); ++a) {
+            const LatticeKey neighbor{
+                base.x + offsets[a].x,
+                base.y + offsets[a].y,
+                base.z + offsets[a].z
+            };
+            auto it = lookup.find(neighbor);
+            if (it == lookup.end()) {
+                continue;
+            }
+            const int to_id = it->second;
+            if (from_id < to_id) {
+                from.push_back(from_id);
+                to.push_back(to_id);
+                distance.push_back(offset_lengths[a]);
+            }
+        }
+    }
+
+    return DataFrame::create(
+        _["from"] = wrap(from),
+        _["to"] = wrap(to),
+        _["distance"] = wrap(distance)
+    );
 }
 
 //' Build Potts-LBP graph inputs from a sparse adjacency matrix

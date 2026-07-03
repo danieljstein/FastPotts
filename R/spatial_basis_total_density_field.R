@@ -54,6 +54,131 @@ align_design_to_basis <- function(design, basis_lattice, basis_points) {
     design
 }
 
+new_basis_design_accumulator <- function(d) {
+    list(
+        key_to_id = integer(),
+        basis_lattice = matrix(integer(), nrow = 0L, ncol = d),
+        basis_points = matrix(numeric(), nrow = 0L, ncol = d)
+    )
+}
+
+append_basis_design_chunk <- function(accumulator, design) {
+    local_key = do.call(paste, c(as.data.frame(design$basis_lattice), sep = ":"))
+    global_id = unname(accumulator$key_to_id[local_key])
+    missing = is.na(global_id)
+    if (any(missing)) {
+        new_id = seq.int(
+            length(accumulator$key_to_id) + 1L,
+            length(accumulator$key_to_id) + sum(missing)
+        )
+        names(new_id) = local_key[missing]
+        accumulator$key_to_id = c(accumulator$key_to_id, new_id)
+        accumulator$basis_lattice = rbind(
+            accumulator$basis_lattice,
+            design$basis_lattice[missing, , drop = FALSE]
+        )
+        accumulator$basis_points = rbind(
+            accumulator$basis_points,
+            design$basis_points[missing, , drop = FALSE]
+        )
+        global_id[missing] = new_id
+    }
+
+    design$basis_id[] = global_id[design$basis_id]
+    list(
+        accumulator = accumulator,
+        basis_id = design$basis_id,
+        basis_weight = design$basis_weight
+    )
+}
+
+compute_density_basis_design_chunked <- function(
+    coords,
+    basis,
+    s,
+    origin,
+    n_threads,
+    chunk_size,
+    accumulator = NULL
+) {
+    coords = as.matrix(coords)
+    d = ncol(coords)
+    n = nrow(coords)
+    if (is.null(accumulator)) {
+        accumulator = new_basis_design_accumulator(d)
+    }
+    n_active = if (basis == "2d") 3L else 4L
+    basis_id = matrix(NA_integer_, nrow = n, ncol = n_active)
+    basis_weight = matrix(NA_real_, nrow = n, ncol = n_active)
+    if (n == 0L) {
+        return(list(
+            accumulator = accumulator,
+            basis_id = basis_id,
+            basis_weight = basis_weight
+        ))
+    }
+
+    chunk_starts = seq.int(1L, n, by = chunk_size)
+    for (start in chunk_starts) {
+        end = min(start + chunk_size - 1L, n)
+        chunk_coords = coords[start:end, , drop = FALSE]
+        bary = if (basis == "2d") {
+            tri_barycentric(chunk_coords, s = s, origin = origin, n_threads = n_threads)
+        } else {
+            bcc_barycentric(chunk_coords, s = s, origin = origin, n_threads = n_threads)
+        }
+        chunk_design = basis_design_from_barycentric(bary)
+        merged = append_basis_design_chunk(accumulator, chunk_design)
+        accumulator = merged$accumulator
+        basis_id[start:end, ] = merged$basis_id
+        basis_weight[start:end, ] = merged$basis_weight
+    }
+
+    list(
+        accumulator = accumulator,
+        basis_id = basis_id,
+        basis_weight = basis_weight
+    )
+}
+
+align_density_basis_design_to_parent <- function(obs_basis_id, quad_basis_id, basis_lattice_density, basis_lattice_parent) {
+    parent_key = do.call(paste, c(as.data.frame(basis_lattice_parent), sep = ":"))
+    density_key = do.call(paste, c(as.data.frame(basis_lattice_density), sep = ":"))
+    parent_lookup = seq_along(parent_key)
+    names(parent_lookup) = parent_key
+
+    matched = unname(parent_lookup[density_key])
+    missing = is.na(matched)
+    if (any(missing)) {
+        stop(
+            "The density basis does not align with segmentation_fit$basis_lattice; ",
+            sum(missing),
+            " active basis point(s) were not found. ",
+            "Check that basis, s, origin, and transcripts_df match the segmentation fit.",
+            call. = FALSE
+        )
+    }
+
+    list(
+        obs_basis_id = matrix(matched[obs_basis_id], nrow = nrow(obs_basis_id), ncol = ncol(obs_basis_id)),
+        quad_basis_id = matrix(matched[quad_basis_id], nrow = nrow(quad_basis_id), ncol = ncol(quad_basis_id))
+    )
+}
+
+finalize_density_basis_design <- function(obs_basis_id, quad_basis_id, basis_lattice, basis_points) {
+    key = do.call(paste, c(as.data.frame(basis_lattice), sep = ":"))
+    order_id = order(key)
+    old_to_new = integer(length(order_id))
+    old_to_new[order_id] = seq_along(order_id)
+
+    list(
+        obs_basis_id = matrix(old_to_new[obs_basis_id], nrow = nrow(obs_basis_id), ncol = ncol(obs_basis_id)),
+        quad_basis_id = matrix(old_to_new[quad_basis_id], nrow = nrow(quad_basis_id), ncol = ncol(quad_basis_id)),
+        basis_lattice = basis_lattice[order_id, , drop = FALSE],
+        basis_points = basis_points[order_id, , drop = FALSE]
+    )
+}
+
 #' Fit total transcript density on an existing spatial basis
 #'
 #' Fits the same log-linear inhomogeneous Poisson density model as
@@ -89,6 +214,9 @@ align_design_to_basis <- function(design, basis_lattice, basis_points) {
 #' @param store_quadrature_coords Logical; if `TRUE`, store quadrature point
 #'   coordinates in the returned object. The fitting objective does not need
 #'   these coordinates, so the default `FALSE` is more memory efficient.
+#' @param interpolation_chunk_size Positive integer number of transcript or
+#'   quadrature coordinates to pass to the barycentric interpolation backend at
+#'   once. Smaller values reduce peak memory during density-basis interpolation.
 #' @param lambda Non-negative smoothing strength on neighboring basis-point
 #'   log-density slopes.
 #' @param regularization Character; one of `"quadratic"`, `"huber"`, or
@@ -121,6 +249,7 @@ spatial_basis_total_density_field <- function(
     basis_subdivision = 1L,
     quadrature_subdivision = 1L,
     store_quadrature_coords = FALSE,
+    interpolation_chunk_size = 250000L,
     lambda = 0.1,
     regularization = c("bounded", "quadratic", "huber"),
     delta = 1,
@@ -194,6 +323,12 @@ spatial_basis_total_density_field <- function(
     if (!is.logical(store_quadrature_coords) || length(store_quadrature_coords) != 1L || is.na(store_quadrature_coords)) {
         stop("store_quadrature_coords must be TRUE or FALSE.", call. = FALSE)
     }
+    if (length(interpolation_chunk_size) != 1L ||
+        !is.finite(interpolation_chunk_size) ||
+        interpolation_chunk_size < 1L) {
+        stop("interpolation_chunk_size must be a positive integer.", call. = FALSE)
+    }
+    interpolation_chunk_size = as.integer(interpolation_chunk_size)
     if (length(lambda) != 1L || !is.finite(lambda) || lambda < 0) {
         stop("lambda must be a non-negative finite scalar.", call. = FALSE)
     }
@@ -254,22 +389,47 @@ spatial_basis_total_density_field <- function(
     if (show_progress) {
         message("Computing interpolation on density basis...")
     }
-    all_coords = rbind(coords, parent_quadrature$coords)
-    density_bary = if (basis == "2d") {
-        tri_barycentric(all_coords, s = density_s, origin = origin, n_threads = basis_n_threads)
-    } else {
-        bcc_barycentric(all_coords, s = density_s, origin = origin, n_threads = basis_n_threads)
-    }
-    design = basis_design_from_barycentric(density_bary)
-    obs_rows = seq_len(nrow(coords))
-    quad_rows = seq.int(nrow(coords) + 1L, nrow(all_coords))
+    obs_density_design = compute_density_basis_design_chunked(
+        coords = coords,
+        basis = basis,
+        s = density_s,
+        origin = origin,
+        n_threads = basis_n_threads,
+        chunk_size = interpolation_chunk_size
+    )
+    quad_density_design = compute_density_basis_design_chunked(
+        coords = parent_quadrature$coords,
+        basis = basis,
+        s = density_s,
+        origin = origin,
+        n_threads = basis_n_threads,
+        chunk_size = interpolation_chunk_size,
+        accumulator = obs_density_design$accumulator
+    )
+
+    finalized_density_design = finalize_density_basis_design(
+        obs_basis_id = obs_density_design$basis_id,
+        quad_basis_id = quad_density_design$basis_id,
+        basis_lattice = quad_density_design$accumulator$basis_lattice,
+        basis_points = quad_density_design$accumulator$basis_points
+    )
+    obs_density_design$basis_id = finalized_density_design$obs_basis_id
+    quad_density_design$basis_id = finalized_density_design$quad_basis_id
+    basis_lattice_density = finalized_density_design$basis_lattice
+    basis_points_density = finalized_density_design$basis_points
 
     if (basis_subdivision == 1L) {
-        design = align_design_to_basis(design, basis_lattice, basis_points)
+        aligned_density_design = align_density_basis_design_to_parent(
+            obs_basis_id = obs_density_design$basis_id,
+            quad_basis_id = quad_density_design$basis_id,
+            basis_lattice_density = basis_lattice_density,
+            basis_lattice_parent = basis_lattice
+        )
+        obs_density_design$basis_id = aligned_density_design$obs_basis_id
+        quad_density_design$basis_id = aligned_density_design$quad_basis_id
+        basis_lattice_density = basis_lattice
+        basis_points_density = basis_points
     }
-
-    basis_lattice_density = design$basis_lattice
-    basis_points_density = design$basis_points
     basis_edges = if (basis_subdivision == 1L) segmentation_fit$basis_edges else NULL
     if (is.null(basis_edges)) {
         if (show_progress) {
@@ -281,8 +441,8 @@ spatial_basis_total_density_field <- function(
     quadrature = list(
         coords = if (isTRUE(store_quadrature_coords)) parent_quadrature$coords else NULL,
         weight = parent_quadrature$weight,
-        basis_id = design$basis_id[quad_rows, , drop = FALSE],
-        basis_weight = design$basis_weight[quad_rows, , drop = FALSE],
+        basis_id = quad_density_design$basis_id,
+        basis_weight = quad_density_design$basis_weight,
         bounds = if (isTRUE(store_quadrature_coords)) parent_quadrature$bounds else NULL,
         method = "parent_simplex_density_basis",
         subdivision = as.integer(quadrature_subdivision),
@@ -291,8 +451,8 @@ spatial_basis_total_density_field <- function(
         n_simplex = parent_quadrature$n_simplex
     )
 
-    obs_basis_id = design$basis_id[obs_rows, , drop = FALSE] - 1L
-    obs_basis_weight = design$basis_weight[obs_rows, , drop = FALSE]
+    obs_basis_id = obs_density_design$basis_id - 1L
+    obs_basis_weight = obs_density_design$basis_weight
     quad_basis_id = quadrature$basis_id - 1L
     quad_basis_weight = quadrature$basis_weight
 
@@ -349,8 +509,8 @@ spatial_basis_total_density_field <- function(
         basis_edges = basis_edges,
         parent_basis_points = basis_points,
         parent_basis_lattice = basis_lattice,
-        transcript_basis_id = design$basis_id[obs_rows, , drop = FALSE],
-        transcript_basis_weight = design$basis_weight[obs_rows, , drop = FALSE],
+        transcript_basis_id = obs_density_design$basis_id,
+        transcript_basis_weight = obs_density_design$basis_weight,
         quadrature = quadrature,
         optim = opt,
         parameters = list(
@@ -362,6 +522,7 @@ spatial_basis_total_density_field <- function(
             quadrature_subdivision = quadrature_subdivision,
             effective_quadrature_subdivision = effective_quadrature_subdivision,
             store_quadrature_coords = store_quadrature_coords,
+            interpolation_chunk_size = interpolation_chunk_size,
             lambda = lambda,
             regularization = regularization,
             delta = delta,

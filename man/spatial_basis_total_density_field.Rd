@@ -16,6 +16,7 @@ spatial_basis_total_density_field(
   basis_subdivision = 1L,
   quadrature_subdivision = 1L,
   store_quadrature_coords = FALSE,
+  interpolation_chunk_size = 250000L,
   lambda = 0.1,
   regularization = c("bounded", "quadratic", "huber"),
   delta = 1,
@@ -59,6 +60,10 @@ subdivision of each occupied segmentation simplex is
 \item{store_quadrature_coords}{Logical; if \code{TRUE}, store quadrature point
 coordinates in the returned object. The fitting objective does not need
 these coordinates, so the default \code{FALSE} is more memory efficient.}
+
+\item{interpolation_chunk_size}{Positive integer number of transcript or
+quadrature coordinates to pass to the barycentric interpolation backend at
+once. Smaller values reduce peak memory during density-basis interpolation.}
 
 \item{lambda}{Non-negative smoothing strength on neighboring basis-point
 log-density slopes.}

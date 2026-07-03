@@ -5,6 +5,23 @@ bcc_barycentric_cpp <- function(coords, s, origin, tol = 1e-10, n_threads = 0L) 
     .Call(`_FastPotts_bcc_barycentric_cpp`, coords, s, origin, tol, n_threads)
 }
 
+#' Build lattice-neighbor edges from integer basis coordinates
+#'
+#' Internal helper for triangular and BCC spatial basis graphs. This avoids
+#' the large string-key and neighbor-matrix temporaries used by the R fallback.
+#'
+#' @param basis_lattice Integer matrix of basis lattice coordinates.
+#' @param basis_id Integer; 0 for triangular 2D, 1 for BCC 3D.
+#' @param s Positive mesh size.
+#'
+#' @return A data frame with one row per undirected edge and columns `from`,
+#'   `to`, and `distance`. Node indices are 1-based.
+#' @keywords internal
+#' @noRd
+build_lattice_neighbor_edges_cpp <- function(basis_lattice, basis_id, s) {
+    .Call(`_FastPotts_build_lattice_neighbor_edges_cpp`, basis_lattice, basis_id, s)
+}
+
 #' Build Potts-LBP graph inputs from a sparse adjacency matrix
 #'
 #' Converts a square sparse adjacency matrix of class `dgCMatrix` into the

@@ -25,6 +25,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// build_lattice_neighbor_edges_cpp
+DataFrame build_lattice_neighbor_edges_cpp(const IntegerMatrix& basis_lattice, const int basis_id, const double s);
+RcppExport SEXP _FastPotts_build_lattice_neighbor_edges_cpp(SEXP basis_latticeSEXP, SEXP basis_idSEXP, SEXP sSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type basis_lattice(basis_latticeSEXP);
+    Rcpp::traits::input_parameter< const int >::type basis_id(basis_idSEXP);
+    Rcpp::traits::input_parameter< const double >::type s(sSEXP);
+    rcpp_result_gen = Rcpp::wrap(build_lattice_neighbor_edges_cpp(basis_lattice, basis_id, s));
+    return rcpp_result_gen;
+END_RCPP
+}
 // build_potts_lbp_graph
 List build_potts_lbp_graph(SEXP mat, const bool drop_diagonal, const bool check_reverse);
 RcppExport SEXP _FastPotts_build_potts_lbp_graph(SEXP matSEXP, SEXP drop_diagonalSEXP, SEXP check_reverseSEXP) {
@@ -394,6 +407,7 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_bcc_barycentric_cpp", (DL_FUNC) &_FastPotts_bcc_barycentric_cpp, 5},
+    {"_FastPotts_build_lattice_neighbor_edges_cpp", (DL_FUNC) &_FastPotts_build_lattice_neighbor_edges_cpp, 3},
     {"_FastPotts_build_potts_lbp_graph", (DL_FUNC) &_FastPotts_build_potts_lbp_graph, 3},
     {"_FastPotts_build_potts_lbp_graph_from_edges", (DL_FUNC) &_FastPotts_build_potts_lbp_graph_from_edges, 6},
     {"_FastPotts_hilbert_index_scaled_cpp", (DL_FUNC) &_FastPotts_hilbert_index_scaled_cpp, 3},
