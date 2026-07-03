@@ -325,6 +325,14 @@ spatial_density_predict_cpp <- function(par, basis_id, basis_weight, edge_id, pa
     .Call(`_FastPotts_spatial_density_predict_cpp`, par, basis_id, basis_weight, edge_id, pair_from, pair_to, density_floor, n_basis, n_edge_coef, n_cell_types, n_threads)
 }
 
+#' Build the occupied-simplex domain for analytic log-density integration
+#'
+#' @keywords internal
+#' @noRd
+make_log_density_domain_simplex_cpp <- function(basis_id, simplex_volume) {
+    .Call(`_FastPotts_make_log_density_domain_simplex_cpp`, basis_id, simplex_volume)
+}
+
 #' Integrate a log-linear density over simplexes
 #'
 #' For each row of `h`, computes `volume * E[exp(sum_i lambda_i h_i)]`

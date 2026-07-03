@@ -239,6 +239,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// make_log_density_domain_simplex_cpp
+List make_log_density_domain_simplex_cpp(const IntegerMatrix& basis_id, const double simplex_volume);
+RcppExport SEXP _FastPotts_make_log_density_domain_simplex_cpp(SEXP basis_idSEXP, SEXP simplex_volumeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type basis_id(basis_idSEXP);
+    Rcpp::traits::input_parameter< const double >::type simplex_volume(simplex_volumeSEXP);
+    rcpp_result_gen = Rcpp::wrap(make_log_density_domain_simplex_cpp(basis_id, simplex_volume));
+    return rcpp_result_gen;
+END_RCPP
+}
 // simplex_log_density_integral_cpp
 List simplex_log_density_integral_cpp(const NumericMatrix& h, const NumericVector& volume, const double taylor_radius, const double close_tol, const double taylor_tol, const int taylor_max_terms, const int gauss_order, const int n_threads);
 RcppExport SEXP _FastPotts_simplex_log_density_integral_cpp(SEXP hSEXP, SEXP volumeSEXP, SEXP taylor_radiusSEXP, SEXP close_tolSEXP, SEXP taylor_tolSEXP, SEXP taylor_max_termsSEXP, SEXP gauss_orderSEXP, SEXP n_threadsSEXP) {
@@ -466,6 +478,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_spatial_basis_predict_cpp", (DL_FUNC) &_FastPotts_spatial_basis_predict_cpp, 8},
     {"_FastPotts_spatial_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_density_objective_cpp, 24},
     {"_FastPotts_spatial_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_density_predict_cpp, 11},
+    {"_FastPotts_make_log_density_domain_simplex_cpp", (DL_FUNC) &_FastPotts_make_log_density_domain_simplex_cpp, 2},
     {"_FastPotts_simplex_log_density_integral_cpp", (DL_FUNC) &_FastPotts_simplex_log_density_integral_cpp, 8},
     {"_FastPotts_spatial_log_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_objective_cpp, 15},
     {"_FastPotts_spatial_log_density_objective_simplex_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_objective_simplex_cpp, 19},

@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string>
+#include <unordered_set>
 #include <vector>
 using namespace Rcpp;
 
@@ -34,6 +36,67 @@ static inline double evaluate_eta_point(
         eta += basis_weight(i, a) * par[basis_id(i, a)];
     }
     return eta;
+}
+
+//' Build the occupied-simplex domain for analytic log-density integration
+//'
+//' @keywords internal
+//' @noRd
+// [[Rcpp::export]]
+List make_log_density_domain_simplex_cpp(
+    const IntegerMatrix& basis_id,
+    const double simplex_volume
+) {
+    const int n_obs = basis_id.nrow();
+    const int n_active = basis_id.ncol();
+    if (n_active != 3 && n_active != 4) {
+        stop("basis_id must have three columns for triangles or four columns for tetrahedra.");
+    }
+    if (!R_finite(simplex_volume) || simplex_volume <= 0.0) {
+        stop("simplex_volume must be a positive finite scalar.");
+    }
+
+    std::unordered_set<std::string> seen;
+    seen.reserve(static_cast<size_t>(n_obs * 1.3));
+    std::vector<int> kept;
+    kept.reserve(static_cast<size_t>(n_obs * n_active));
+
+    for (int i = 0; i < n_obs; ++i) {
+        int ids[4];
+        for (int a = 0; a < n_active; ++a) {
+            ids[a] = basis_id(i, a);
+        }
+        std::sort(ids, ids + n_active);
+
+        std::string key = std::to_string(ids[0]);
+        for (int a = 1; a < n_active; ++a) {
+            key.push_back(':');
+            key += std::to_string(ids[a]);
+        }
+
+        if (seen.insert(key).second) {
+            for (int a = 0; a < n_active; ++a) {
+                kept.push_back(ids[a]);
+            }
+        }
+    }
+
+    const int n_simplex = kept.size() / n_active;
+    IntegerMatrix simplex_basis_id(n_simplex, n_active);
+    for (int i = 0; i < n_simplex; ++i) {
+        for (int a = 0; a < n_active; ++a) {
+            simplex_basis_id(i, a) = kept[static_cast<size_t>(i * n_active + a)];
+        }
+    }
+
+    NumericVector volume(n_simplex, simplex_volume);
+    return List::create(
+        _["basis_id"] = simplex_basis_id,
+        _["volume"] = volume,
+        _["method"] = "analytic_simplex",
+        _["n_simplex"] = n_simplex,
+        _["simplex_volume"] = simplex_volume
+    );
 }
 
 static inline double log_density_factorial(const int n) {

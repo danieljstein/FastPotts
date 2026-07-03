@@ -1,24 +1,9 @@
 make_log_density_domain_simplex <- function(design) {
-    n_active = ncol(design$basis_id)
-    simplex_basis_id = t(apply(design$basis_id, 1L, sort))
-    if (n_active == 1L) {
-        simplex_key = as.character(simplex_basis_id[, 1L])
-    } else {
-        simplex_key = apply(simplex_basis_id, 1L, paste, collapse = ":")
-    }
-    first = match(unique(simplex_key), simplex_key)
-    simplex_basis_id = simplex_basis_id[first, , drop = FALSE]
-
-    volume = vapply(seq_len(nrow(simplex_basis_id)), function(i) {
-        ids = simplex_basis_id[i, ]
-        simplex_volume(design$basis_points[ids, , drop = FALSE])
-    }, numeric(1L))
-
-    list(
-        basis_id = simplex_basis_id,
-        volume = volume,
-        method = "analytic_simplex",
-        n_simplex = nrow(simplex_basis_id)
+    ids = sort(design$basis_id[1L, ])
+    volume = simplex_volume(design$basis_points[ids, , drop = FALSE])
+    make_log_density_domain_simplex_cpp(
+        basis_id = design$basis_id,
+        simplex_volume = volume
     )
 }
 
