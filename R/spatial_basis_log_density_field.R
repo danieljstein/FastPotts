@@ -231,7 +231,11 @@ spatial_basis_log_density_field <- function(
     obs_basis_weight = design$basis_weight
     simplex_basis_id = domain$basis_id - 1L
 
-    volume = sum(domain$volume)
+    volume = if (length(domain$volume) == 1L) {
+        domain$volume * domain$n_simplex
+    } else {
+        sum(domain$volume)
+    }
     par0 = rep(log(pmax(nrow(coords) / volume, 1e-8)), nrow(basis_lattice))
     regularization_id = match(regularization, c("quadratic", "huber", "bounded")) - 1L
 

@@ -146,10 +146,9 @@ List make_log_density_domain_simplex_cpp(
         }
     }
 
-    NumericVector volume(n_simplex, simplex_volume);
     return List::create(
         _["basis_id"] = simplex_basis_id,
-        _["volume"] = volume,
+        _["volume"] = NumericVector::create(simplex_volume),
         _["method"] = "analytic_simplex",
         _["n_simplex"] = n_simplex,
         _["simplex_volume"] = simplex_volume
@@ -399,11 +398,9 @@ List make_log_density_domain_expanded_cpp(
     const double simplex_volume = basis_id == 0 ?
         (std::sqrt(3.0) * s * s / 4.0) :
         (s * s * s / 12.0);
-    NumericVector volume(n_simplex, simplex_volume);
-
     return List::create(
         _["basis_id"] = simplex_basis_id,
-        _["volume"] = volume,
+        _["volume"] = NumericVector::create(simplex_volume),
         _["basis_lattice"] = out_lattice,
         _["basis_points"] = out_points,
         _["method"] = expansion_steps == 0 ? "analytic_simplex" : "analytic_simplex_expanded",
@@ -1043,8 +1040,13 @@ List spatial_log_density_objective_simplex_cpp(
     if (simplex_basis_id.ncol() != n_active) {
         stop("simplex_basis_id must have the same number of columns as obs_basis_id.");
     }
-    if (simplex_volume.size() != n_simplex) {
-        stop("simplex_volume must have one value per simplex.");
+    if (simplex_volume.size() != 1 && simplex_volume.size() != n_simplex) {
+        stop("simplex_volume must have length 1 or one value per simplex.");
+    }
+    for (int i = 0; i < simplex_volume.size(); ++i) {
+        if (!R_finite(simplex_volume[i]) || simplex_volume[i] < 0.0) {
+            stop("simplex_volume values must be non-negative and finite.");
+        }
     }
     if (edge_to.size() != n_edges || edge_distance.size() != n_edges) {
         stop("edge vectors must have matching lengths.");
@@ -1119,7 +1121,7 @@ List spatial_log_density_objective_simplex_cpp(
             int method_i = 0;
             const double integral_i = simplex_log_density_integral_one(
                 h_i,
-                simplex_volume[i],
+                simplex_volume.size() == 1 ? simplex_volume[0] : simplex_volume[i],
                 grad_i,
                 taylor_radius,
                 close_tol,
