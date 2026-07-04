@@ -1,9 +1,34 @@
-make_log_density_domain_simplex <- function(design) {
-    ids = sort(design$basis_id[1L, ])
-    volume = simplex_volume(design$basis_points[ids, , drop = FALSE])
-    make_log_density_domain_simplex_cpp(
-        basis_id = design$basis_id,
-        simplex_volume = volume
+make_log_density_domain_simplex <- function(
+    design,
+    basis,
+    s,
+    origin,
+    domain_expansion_steps = 0L,
+    domain_expansion_axes = "xyz"
+) {
+    basis_id = match(basis, c("tri", "bcc")) - 1L
+    expansion_axis_id = match(domain_expansion_axes, c("xyz", "xy")) - 1L
+    if (domain_expansion_steps == 0L) {
+        ids = sort(design$basis_id[1L, ])
+        volume = simplex_volume(design$basis_points[ids, , drop = FALSE])
+        domain = make_log_density_domain_simplex_cpp(
+            basis_id = design$basis_id,
+            simplex_volume = volume
+        )
+        domain$basis_lattice = design$basis_lattice
+        domain$basis_points = design$basis_points
+        domain$expansion_steps = 0L
+        domain$expansion_axis_id = expansion_axis_id
+        return(domain)
+    }
+    make_log_density_domain_expanded_cpp(
+        basis_lattice = design$basis_lattice,
+        basis_points = design$basis_points,
+        basis_id = basis_id,
+        s = as.numeric(s),
+        origin = as.numeric(origin),
+        expansion_steps = as.integer(domain_expansion_steps),
+        expansion_axis_id = as.integer(expansion_axis_id)
     )
 }
 
@@ -50,6 +75,12 @@ make_log_density_domain_simplex <- function(design) {
 #' @param lambda_laplacian Non-negative strength for a graph Laplacian
 #'   curvature penalty on the basis-point log-density field. This penalizes
 #'   deviations from a distance-weighted neighbor average.
+#' @param domain_expansion_steps Non-negative integer number of basis-graph
+#'   dilation steps used to expand the integration domain beyond basis vertices
+#'   touched by transcripts. A value of zero keeps the occupied-domain behavior.
+#' @param domain_expansion_axes Character; `"xyz"` expands along all basis-graph
+#'   edges, while `"xy"` expands only along edges with no z displacement. The
+#'   `"xy"` option is mainly useful for thin 3D samples.
 #' @param maxit Maximum L-BFGS iterations.
 #' @param reltol Relative convergence tolerance.
 #' @param n_threads Integer number of OpenMP threads. If `NULL`, uses runtime
@@ -78,6 +109,8 @@ spatial_basis_log_density_field <- function(
     delta = 1,
     sigma = 1,
     lambda_laplacian = 0,
+    domain_expansion_steps = 0L,
+    domain_expansion_axes = c("xyz", "xy"),
     maxit = 100L,
     reltol = 1e-6,
     n_threads = NULL,
@@ -85,6 +118,7 @@ spatial_basis_log_density_field <- function(
 ) {
     basis = normalize_spatial_basis(basis)
     regularization = match.arg(regularization)
+    domain_expansion_axes = match.arg(domain_expansion_axes)
     lattice_basis = if (basis == "2d") "tri" else "bcc"
     d = if (basis == "2d") 2L else 3L
     coord_cols = if (basis == "2d") c(x, y) else c(x, y, z)
@@ -126,6 +160,15 @@ spatial_basis_log_density_field <- function(
     if (length(lambda_laplacian) != 1L || !is.finite(lambda_laplacian) || lambda_laplacian < 0) {
         stop("lambda_laplacian must be a non-negative finite scalar.", call. = FALSE)
     }
+    if (
+        length(domain_expansion_steps) != 1L ||
+        !is.finite(domain_expansion_steps) ||
+        domain_expansion_steps < 0 ||
+        domain_expansion_steps != as.integer(domain_expansion_steps)
+    ) {
+        stop("domain_expansion_steps must be a non-negative integer.", call. = FALSE)
+    }
+    domain_expansion_steps = as.integer(domain_expansion_steps)
     if (maxit < 1L) {
         stop("maxit must be positive.", call. = FALSE)
     }
@@ -166,21 +209,30 @@ spatial_basis_log_density_field <- function(
     design = basis_design_from_barycentric(bary)
 
     if (show_progress) {
-        message("Building occupied-simplex integration domain...")
+        message("Building simplex integration domain...")
     }
-    domain = make_log_density_domain_simplex(design)
+    domain = make_log_density_domain_simplex(
+        design = design,
+        basis = lattice_basis,
+        s = s,
+        origin = origin,
+        domain_expansion_steps = domain_expansion_steps,
+        domain_expansion_axes = domain_expansion_axes
+    )
+    basis_lattice = domain$basis_lattice
+    basis_points = domain$basis_points
 
     if (show_progress) {
         message("Building basis edge design...")
     }
-    basis_edges = build_lattice_neighbor_edges(design$basis_lattice, basis = lattice_basis, s = s)
+    basis_edges = build_lattice_neighbor_edges(basis_lattice, basis = lattice_basis, s = s)
 
     obs_basis_id = design$basis_id - 1L
     obs_basis_weight = design$basis_weight
     simplex_basis_id = domain$basis_id - 1L
 
     volume = sum(domain$volume)
-    par0 = rep(log(pmax(nrow(coords) / volume, 1e-8)), nrow(design$basis_lattice))
+    par0 = rep(log(pmax(nrow(coords) / volume, 1e-8)), nrow(basis_lattice))
     regularization_id = match(regularization, c("quadratic", "huber", "bounded")) - 1L
 
     objective = function(par) {
@@ -242,8 +294,8 @@ spatial_basis_log_density_field <- function(
         eta = eta,
         eta_basis = opt$par,
         posterior = posterior,
-        basis_points = design$basis_points,
-        basis_lattice = design$basis_lattice,
+        basis_points = basis_points,
+        basis_lattice = basis_lattice,
         basis_edges = basis_edges,
         transcript_basis_id = design$basis_id,
         transcript_basis_weight = design$basis_weight,
@@ -263,6 +315,8 @@ spatial_basis_log_density_field <- function(
             delta = delta,
             sigma = sigma,
             lambda_laplacian = lambda_laplacian,
+            domain_expansion_steps = domain_expansion_steps,
+            domain_expansion_axes = domain_expansion_axes,
             maxit = maxit,
             reltol = reltol
         )

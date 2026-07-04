@@ -251,6 +251,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// make_log_density_domain_expanded_cpp
+List make_log_density_domain_expanded_cpp(const IntegerMatrix& basis_lattice, const NumericMatrix& basis_points, const int basis_id, const double s, const NumericVector& origin, const int expansion_steps, const int expansion_axis_id);
+RcppExport SEXP _FastPotts_make_log_density_domain_expanded_cpp(SEXP basis_latticeSEXP, SEXP basis_pointsSEXP, SEXP basis_idSEXP, SEXP sSEXP, SEXP originSEXP, SEXP expansion_stepsSEXP, SEXP expansion_axis_idSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type basis_lattice(basis_latticeSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type basis_points(basis_pointsSEXP);
+    Rcpp::traits::input_parameter< const int >::type basis_id(basis_idSEXP);
+    Rcpp::traits::input_parameter< const double >::type s(sSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type origin(originSEXP);
+    Rcpp::traits::input_parameter< const int >::type expansion_steps(expansion_stepsSEXP);
+    Rcpp::traits::input_parameter< const int >::type expansion_axis_id(expansion_axis_idSEXP);
+    rcpp_result_gen = Rcpp::wrap(make_log_density_domain_expanded_cpp(basis_lattice, basis_points, basis_id, s, origin, expansion_steps, expansion_axis_id));
+    return rcpp_result_gen;
+END_RCPP
+}
 // simplex_log_density_integral_cpp
 List simplex_log_density_integral_cpp(const NumericMatrix& h, const NumericVector& volume, const double taylor_radius, const double close_tol, const double taylor_tol, const int taylor_max_terms, const int gauss_order, const int n_threads);
 RcppExport SEXP _FastPotts_simplex_log_density_integral_cpp(SEXP hSEXP, SEXP volumeSEXP, SEXP taylor_radiusSEXP, SEXP close_tolSEXP, SEXP taylor_tolSEXP, SEXP taylor_max_termsSEXP, SEXP gauss_orderSEXP, SEXP n_threadsSEXP) {
@@ -479,6 +496,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_spatial_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_density_objective_cpp, 24},
     {"_FastPotts_spatial_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_density_predict_cpp, 11},
     {"_FastPotts_make_log_density_domain_simplex_cpp", (DL_FUNC) &_FastPotts_make_log_density_domain_simplex_cpp, 2},
+    {"_FastPotts_make_log_density_domain_expanded_cpp", (DL_FUNC) &_FastPotts_make_log_density_domain_expanded_cpp, 7},
     {"_FastPotts_simplex_log_density_integral_cpp", (DL_FUNC) &_FastPotts_simplex_log_density_integral_cpp, 8},
     {"_FastPotts_spatial_log_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_objective_cpp, 15},
     {"_FastPotts_spatial_log_density_objective_simplex_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_objective_simplex_cpp, 19},

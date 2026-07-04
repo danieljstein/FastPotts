@@ -21,6 +21,8 @@ spatial_basis_log_density_field(
   delta = 1,
   sigma = 1,
   lambda_laplacian = 0,
+  domain_expansion_steps = 0L,
+  domain_expansion_axes = c("xyz", "xy"),
   maxit = 100L,
   reltol = 1e-06,
   n_threads = NULL,
@@ -69,6 +71,14 @@ log-density slopes.}
 \item{lambda_laplacian}{Non-negative strength for a graph Laplacian
 curvature penalty on the basis-point log-density field. This penalizes
 deviations from a distance-weighted neighbor average.}
+
+\item{domain_expansion_steps}{Non-negative integer number of basis-graph
+dilation steps used to expand the integration domain beyond basis vertices
+touched by transcripts. A value of zero keeps the occupied-domain behavior.}
+
+\item{domain_expansion_axes}{Character; \code{"xyz"} expands along all basis-graph
+edges, while \code{"xy"} expands only along edges with no z displacement. The
+\code{"xy"} option is mainly useful for thin 3D samples.}
 
 \item{maxit}{Maximum L-BFGS iterations.}
 

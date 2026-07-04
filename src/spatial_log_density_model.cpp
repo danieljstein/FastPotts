@@ -2,9 +2,11 @@
 // [[Rcpp::plugins(openmp)]]
 #include <Rcpp.h>
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <limits>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 using namespace Rcpp;
@@ -24,6 +26,28 @@ static inline int log_density_resolve_threads(const int n_threads) {
 #endif
 }
 
+struct LogDensityLatticeKey {
+    int x;
+    int y;
+    int z;
+
+    bool operator==(const LogDensityLatticeKey& other) const {
+        return x == other.x && y == other.y && z == other.z;
+    }
+};
+
+struct LogDensityLatticeKeyHash {
+    std::size_t operator()(const LogDensityLatticeKey& key) const {
+        std::uint64_t x = static_cast<std::uint32_t>(key.x);
+        std::uint64_t y = static_cast<std::uint32_t>(key.y);
+        std::uint64_t z = static_cast<std::uint32_t>(key.z);
+        std::uint64_t h = x * 0x9E3779B185EBCA87ULL;
+        h ^= y * 0xC2B2AE3D27D4EB4FULL + (h << 6) + (h >> 2);
+        h ^= z * 0x165667B19E3779F9ULL + (h << 6) + (h >> 2);
+        return static_cast<std::size_t>(h);
+    }
+};
+
 static inline double evaluate_eta_point(
     const int i,
     const IntegerMatrix& basis_id,
@@ -36,6 +60,39 @@ static inline double evaluate_eta_point(
         eta += basis_weight(i, a) * par[basis_id(i, a)];
     }
     return eta;
+}
+
+static inline int log_density_sq_dist(
+    const LogDensityLatticeKey& a,
+    const LogDensityLatticeKey& b
+) {
+    const int dx = a.x - b.x;
+    const int dy = a.y - b.y;
+    const int dz = a.z - b.z;
+    return dx * dx + dy * dy + dz * dz;
+}
+
+static inline bool log_density_is_bcc_delaunay_tet(const LogDensityLatticeKey v[4]) {
+    int d2[6];
+    int idx = 0;
+    for (int a = 0; a < 3; ++a) {
+        for (int b = a + 1; b < 4; ++b) {
+            d2[idx++] = log_density_sq_dist(v[a], v[b]);
+        }
+    }
+    std::sort(d2, d2 + 6);
+    return d2[0] == 3 && d2[1] == 3 && d2[2] == 3 &&
+        d2[3] == 3 && d2[4] == 4 && d2[5] == 4;
+}
+
+static inline std::string simplex_id_key(std::vector<int>& ids) {
+    std::sort(ids.begin(), ids.end());
+    std::string key = std::to_string(ids[0]);
+    for (std::size_t a = 1; a < ids.size(); ++a) {
+        key.push_back(':');
+        key += std::to_string(ids[a]);
+    }
+    return key;
 }
 
 //' Build the occupied-simplex domain for analytic log-density integration
@@ -96,6 +153,264 @@ List make_log_density_domain_simplex_cpp(
         _["method"] = "analytic_simplex",
         _["n_simplex"] = n_simplex,
         _["simplex_volume"] = simplex_volume
+    );
+}
+
+//' Expand the log-density basis domain by graph steps
+//'
+//' @keywords internal
+//' @noRd
+// [[Rcpp::export]]
+List make_log_density_domain_expanded_cpp(
+    const IntegerMatrix& basis_lattice,
+    const NumericMatrix& basis_points,
+    const int basis_id,
+    const double s,
+    const NumericVector& origin,
+    const int expansion_steps,
+    const int expansion_axis_id
+) {
+    const int n0 = basis_lattice.nrow();
+    const int d = basis_lattice.ncol();
+    if (basis_id == 0 && d != 2) {
+        stop("Triangular basis requires a two-column lattice matrix.");
+    }
+    if (basis_id == 1 && d != 3) {
+        stop("BCC basis requires a three-column lattice matrix.");
+    }
+    if (basis_points.nrow() != n0 || basis_points.ncol() != d) {
+        stop("basis_points dimensions do not match basis_lattice.");
+    }
+    if (!R_finite(s) || s <= 0.0) {
+        stop("s must be a positive finite scalar.");
+    }
+    if (origin.size() != d) {
+        stop("origin length must match the selected basis dimension.");
+    }
+    if (expansion_steps < 0) {
+        stop("expansion_steps must be non-negative.");
+    }
+    if (expansion_axis_id < 0 || expansion_axis_id > 1) {
+        stop("expansion_axis_id must be 0 for xyz/all axes or 1 for xy.");
+    }
+
+    std::vector<LogDensityLatticeKey> lattice;
+    lattice.reserve(static_cast<std::size_t>(n0) * 2);
+    std::unordered_map<LogDensityLatticeKey, int, LogDensityLatticeKeyHash> lookup;
+    lookup.reserve(static_cast<std::size_t>(n0) * 2);
+
+    for (int i = 0; i < n0; ++i) {
+        LogDensityLatticeKey key{
+            basis_lattice(i, 0),
+            basis_lattice(i, 1),
+            d == 3 ? basis_lattice(i, 2) : 0
+        };
+        lookup.emplace(key, i + 1);
+        lattice.push_back(key);
+    }
+
+    std::vector<LogDensityLatticeKey> expansion_offsets;
+    if (basis_id == 0) {
+        expansion_offsets = {
+            {1, 0, 0}, {-1, 0, 0},
+            {0, 1, 0}, {0, -1, 0},
+            {1, -1, 0}, {-1, 1, 0}
+        };
+    } else {
+        expansion_offsets = {
+            {2, 0, 0}, {-2, 0, 0},
+            {0, 2, 0}, {0, -2, 0}
+        };
+        if (expansion_axis_id == 0) {
+            expansion_offsets.push_back({0, 0, 2});
+            expansion_offsets.push_back({0, 0, -2});
+            for (int dx = -1; dx <= 1; dx += 2) {
+                for (int dy = -1; dy <= 1; dy += 2) {
+                    for (int dz = -1; dz <= 1; dz += 2) {
+                        expansion_offsets.push_back({dx, dy, dz});
+                    }
+                }
+            }
+        }
+    }
+
+    std::vector<int> frontier;
+    frontier.reserve(n0);
+    for (int i = 1; i <= n0; ++i) {
+        frontier.push_back(i);
+    }
+
+    for (int step = 0; step < expansion_steps; ++step) {
+        std::vector<int> next_frontier;
+        for (const int id : frontier) {
+            const LogDensityLatticeKey base = lattice[id - 1];
+            for (const auto& offset : expansion_offsets) {
+                LogDensityLatticeKey neighbor{
+                    base.x + offset.x,
+                    base.y + offset.y,
+                    base.z + offset.z
+                };
+                if (lookup.find(neighbor) != lookup.end()) {
+                    continue;
+                }
+                const int new_id = static_cast<int>(lattice.size()) + 1;
+                lookup.emplace(neighbor, new_id);
+                lattice.push_back(neighbor);
+                next_frontier.push_back(new_id);
+            }
+        }
+        frontier.swap(next_frontier);
+        if (frontier.empty()) {
+            break;
+        }
+    }
+
+    std::vector<int> simplex_ids;
+    std::unordered_set<std::string> seen_simplex;
+    seen_simplex.reserve(static_cast<std::size_t>(lattice.size()) * 8);
+
+    if (basis_id == 0) {
+        for (const auto& base : lattice) {
+            const LogDensityLatticeKey tri1[3] = {
+                base,
+                {base.x + 1, base.y, 0},
+                {base.x, base.y + 1, 0}
+            };
+            const LogDensityLatticeKey tri2[3] = {
+                {base.x + 1, base.y + 1, 0},
+                {base.x, base.y + 1, 0},
+                {base.x + 1, base.y, 0}
+            };
+            const LogDensityLatticeKey* tris[2] = {tri1, tri2};
+            for (int t = 0; t < 2; ++t) {
+                std::vector<int> ids;
+                ids.reserve(3);
+                bool ok = true;
+                for (int a = 0; a < 3; ++a) {
+                    auto it = lookup.find(tris[t][a]);
+                    if (it == lookup.end()) {
+                        ok = false;
+                        break;
+                    }
+                    ids.push_back(it->second);
+                }
+                if (!ok) continue;
+                std::string key = simplex_id_key(ids);
+                if (seen_simplex.insert(key).second) {
+                    simplex_ids.insert(simplex_ids.end(), ids.begin(), ids.end());
+                }
+            }
+        }
+    } else {
+        std::vector<LogDensityLatticeKey> neighbor_offsets = {
+            {0, 0, 0},
+            {2, 0, 0}, {-2, 0, 0},
+            {0, 2, 0}, {0, -2, 0},
+            {0, 0, 2}, {0, 0, -2}
+        };
+        for (int dx = -1; dx <= 1; dx += 2) {
+            for (int dy = -1; dy <= 1; dy += 2) {
+                for (int dz = -1; dz <= 1; dz += 2) {
+                    neighbor_offsets.push_back({dx, dy, dz});
+                }
+            }
+        }
+
+        for (const auto& base : lattice) {
+            std::vector<LogDensityLatticeKey> candidates;
+            std::vector<int> candidate_ids;
+            candidates.reserve(neighbor_offsets.size());
+            candidate_ids.reserve(neighbor_offsets.size());
+            for (const auto& offset : neighbor_offsets) {
+                LogDensityLatticeKey key{
+                    base.x + offset.x,
+                    base.y + offset.y,
+                    base.z + offset.z
+                };
+                auto it = lookup.find(key);
+                if (it == lookup.end()) continue;
+                candidates.push_back(key);
+                candidate_ids.push_back(it->second);
+            }
+            const int nc = candidates.size();
+            for (int a = 0; a < nc - 3; ++a) {
+                for (int b = a + 1; b < nc - 2; ++b) {
+                    for (int c = b + 1; c < nc - 1; ++c) {
+                        for (int e = c + 1; e < nc; ++e) {
+                            LogDensityLatticeKey tet[4] = {
+                                candidates[a],
+                                candidates[b],
+                                candidates[c],
+                                candidates[e]
+                            };
+                            if (!log_density_is_bcc_delaunay_tet(tet)) {
+                                continue;
+                            }
+                            std::vector<int> ids = {
+                                candidate_ids[a],
+                                candidate_ids[b],
+                                candidate_ids[c],
+                                candidate_ids[e]
+                            };
+                            std::string key = simplex_id_key(ids);
+                            if (seen_simplex.insert(key).second) {
+                                simplex_ids.insert(simplex_ids.end(), ids.begin(), ids.end());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    const int n_basis = lattice.size();
+    IntegerMatrix out_lattice(n_basis, d);
+    NumericMatrix out_points(n_basis, d);
+    for (int i = 0; i < n_basis; ++i) {
+        out_lattice(i, 0) = lattice[i].x;
+        out_lattice(i, 1) = lattice[i].y;
+        if (d == 3) {
+            out_lattice(i, 2) = lattice[i].z;
+        }
+
+        if (i < n0) {
+            for (int j = 0; j < d; ++j) {
+                out_points(i, j) = basis_points(i, j);
+            }
+        } else if (basis_id == 0) {
+            out_points(i, 0) = origin[0] + s * (static_cast<double>(lattice[i].x) + 0.5 * static_cast<double>(lattice[i].y));
+            out_points(i, 1) = origin[1] + s * (std::sqrt(3.0) / 2.0) * static_cast<double>(lattice[i].y);
+        } else {
+            out_points(i, 0) = origin[0] + s * static_cast<double>(lattice[i].x);
+            out_points(i, 1) = origin[1] + s * static_cast<double>(lattice[i].y);
+            out_points(i, 2) = origin[2] + s * static_cast<double>(lattice[i].z);
+        }
+    }
+
+    const int n_active = basis_id == 0 ? 3 : 4;
+    const int n_simplex = simplex_ids.size() / n_active;
+    IntegerMatrix simplex_basis_id(n_simplex, n_active);
+    for (int i = 0; i < n_simplex; ++i) {
+        for (int a = 0; a < n_active; ++a) {
+            simplex_basis_id(i, a) = simplex_ids[static_cast<std::size_t>(i * n_active + a)];
+        }
+    }
+
+    const double simplex_volume = basis_id == 0 ?
+        (std::sqrt(3.0) * s * s / 4.0) :
+        (s * s * s / 12.0);
+    NumericVector volume(n_simplex, simplex_volume);
+
+    return List::create(
+        _["basis_id"] = simplex_basis_id,
+        _["volume"] = volume,
+        _["basis_lattice"] = out_lattice,
+        _["basis_points"] = out_points,
+        _["method"] = expansion_steps == 0 ? "analytic_simplex" : "analytic_simplex_expanded",
+        _["n_simplex"] = n_simplex,
+        _["simplex_volume"] = simplex_volume,
+        _["expansion_steps"] = expansion_steps,
+        _["expansion_axis_id"] = expansion_axis_id
     );
 }
 

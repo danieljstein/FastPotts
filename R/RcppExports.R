@@ -333,6 +333,14 @@ make_log_density_domain_simplex_cpp <- function(basis_id, simplex_volume) {
     .Call(`_FastPotts_make_log_density_domain_simplex_cpp`, basis_id, simplex_volume)
 }
 
+#' Expand the log-density basis domain by graph steps
+#'
+#' @keywords internal
+#' @noRd
+make_log_density_domain_expanded_cpp <- function(basis_lattice, basis_points, basis_id, s, origin, expansion_steps, expansion_axis_id) {
+    .Call(`_FastPotts_make_log_density_domain_expanded_cpp`, basis_lattice, basis_points, basis_id, s, origin, expansion_steps, expansion_axis_id)
+}
+
 #' Integrate a log-linear density over simplexes
 #'
 #' For each row of `h`, computes `volume * E[exp(sum_i lambda_i h_i)]`
