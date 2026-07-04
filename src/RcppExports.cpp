@@ -312,8 +312,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // spatial_log_density_objective_simplex_cpp
-List spatial_log_density_objective_simplex_cpp(const NumericVector& par, const IntegerMatrix& obs_basis_id, const NumericMatrix& obs_basis_weight, const IntegerMatrix& simplex_basis_id, const NumericVector& simplex_volume, const IntegerVector& edge_from, const IntegerVector& edge_to, const NumericVector& edge_distance, const double lambda, const int regularization, const double delta, const double sigma, const double lambda_laplacian, const double taylor_radius, const double close_tol, const double taylor_tol, const int taylor_max_terms, const int gauss_order, const int n_threads);
-RcppExport SEXP _FastPotts_spatial_log_density_objective_simplex_cpp(SEXP parSEXP, SEXP obs_basis_idSEXP, SEXP obs_basis_weightSEXP, SEXP simplex_basis_idSEXP, SEXP simplex_volumeSEXP, SEXP edge_fromSEXP, SEXP edge_toSEXP, SEXP edge_distanceSEXP, SEXP lambdaSEXP, SEXP regularizationSEXP, SEXP deltaSEXP, SEXP sigmaSEXP, SEXP lambda_laplacianSEXP, SEXP taylor_radiusSEXP, SEXP close_tolSEXP, SEXP taylor_tolSEXP, SEXP taylor_max_termsSEXP, SEXP gauss_orderSEXP, SEXP n_threadsSEXP) {
+List spatial_log_density_objective_simplex_cpp(const NumericVector& par, const IntegerMatrix& obs_basis_id, const NumericMatrix& obs_basis_weight, const IntegerMatrix& simplex_basis_id, const NumericVector& simplex_volume, const IntegerVector& edge_from, const IntegerVector& edge_to, const NumericVector& edge_distance, const double lambda, const int regularization, const double delta, const double sigma, const double lambda_laplacian, const double taylor_radius, const double close_tol, const double taylor_tol, const int taylor_max_terms, const int gauss_order, const int integration_method, const int n_threads);
+RcppExport SEXP _FastPotts_spatial_log_density_objective_simplex_cpp(SEXP parSEXP, SEXP obs_basis_idSEXP, SEXP obs_basis_weightSEXP, SEXP simplex_basis_idSEXP, SEXP simplex_volumeSEXP, SEXP edge_fromSEXP, SEXP edge_toSEXP, SEXP edge_distanceSEXP, SEXP lambdaSEXP, SEXP regularizationSEXP, SEXP deltaSEXP, SEXP sigmaSEXP, SEXP lambda_laplacianSEXP, SEXP taylor_radiusSEXP, SEXP close_tolSEXP, SEXP taylor_tolSEXP, SEXP taylor_max_termsSEXP, SEXP gauss_orderSEXP, SEXP integration_methodSEXP, SEXP n_threadsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -335,8 +335,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const double >::type taylor_tol(taylor_tolSEXP);
     Rcpp::traits::input_parameter< const int >::type taylor_max_terms(taylor_max_termsSEXP);
     Rcpp::traits::input_parameter< const int >::type gauss_order(gauss_orderSEXP);
+    Rcpp::traits::input_parameter< const int >::type integration_method(integration_methodSEXP);
     Rcpp::traits::input_parameter< const int >::type n_threads(n_threadsSEXP);
-    rcpp_result_gen = Rcpp::wrap(spatial_log_density_objective_simplex_cpp(par, obs_basis_id, obs_basis_weight, simplex_basis_id, simplex_volume, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, lambda_laplacian, taylor_radius, close_tol, taylor_tol, taylor_max_terms, gauss_order, n_threads));
+    rcpp_result_gen = Rcpp::wrap(spatial_log_density_objective_simplex_cpp(par, obs_basis_id, obs_basis_weight, simplex_basis_id, simplex_volume, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, lambda_laplacian, taylor_radius, close_tol, taylor_tol, taylor_max_terms, gauss_order, integration_method, n_threads));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -499,7 +500,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_make_log_density_domain_expanded_cpp", (DL_FUNC) &_FastPotts_make_log_density_domain_expanded_cpp, 7},
     {"_FastPotts_simplex_log_density_integral_cpp", (DL_FUNC) &_FastPotts_simplex_log_density_integral_cpp, 8},
     {"_FastPotts_spatial_log_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_objective_cpp, 15},
-    {"_FastPotts_spatial_log_density_objective_simplex_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_objective_simplex_cpp, 19},
+    {"_FastPotts_spatial_log_density_objective_simplex_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_objective_simplex_cpp, 20},
     {"_FastPotts_spatial_log_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_log_density_predict_cpp, 4},
     {"_FastPotts_compact_knn_edges_cpp", (DL_FUNC) &_FastPotts_compact_knn_edges_cpp, 5},
     {"_FastPotts_compact_undirected_edges_cpp", (DL_FUNC) &_FastPotts_compact_undirected_edges_cpp, 5},

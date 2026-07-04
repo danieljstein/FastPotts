@@ -700,6 +700,88 @@ static inline double simplex_log_density_integral_one(
     return simplex_log_density_direct(h, volume, grad);
 }
 
+static inline double simplex_log_density_subdivision_linear_one(
+    const std::vector<double>& h,
+    const double volume,
+    std::vector<double>& grad
+) {
+    const int n = h.size();
+    std::fill(grad.begin(), grad.end(), 0.0);
+    double value = 0.0;
+
+    if (n == 3) {
+        const double w_vertex = 1.0 / 9.0;
+        const double w_edge = 1.0 / 9.0;
+        const double w_centroid = 1.0 / 3.0;
+
+        for (int a = 0; a < 3; ++a) {
+            const double term = w_vertex * std::exp(h[a]);
+            value += term;
+            grad[a] += term;
+        }
+
+        for (int a = 0; a < 2; ++a) {
+            for (int b = a + 1; b < 3; ++b) {
+                const double term = w_edge * std::exp(0.5 * (h[a] + h[b]));
+                value += term;
+                grad[a] += 0.5 * term;
+                grad[b] += 0.5 * term;
+            }
+        }
+
+        const double term = w_centroid * std::exp((h[0] + h[1] + h[2]) / 3.0);
+        value += term;
+        for (int a = 0; a < 3; ++a) {
+            grad[a] += term / 3.0;
+        }
+    } else if (n == 4) {
+        const double w_vertex = 1.0 / 16.0;
+        const double w_edge = 1.0 / 24.0;
+        const double w_face = 1.0 / 16.0;
+        const double w_centroid = 1.0 / 4.0;
+
+        for (int a = 0; a < 4; ++a) {
+            const double term = w_vertex * std::exp(h[a]);
+            value += term;
+            grad[a] += term;
+        }
+
+        for (int a = 0; a < 3; ++a) {
+            for (int b = a + 1; b < 4; ++b) {
+                const double term = w_edge * std::exp(0.5 * (h[a] + h[b]));
+                value += term;
+                grad[a] += 0.5 * term;
+                grad[b] += 0.5 * term;
+            }
+        }
+
+        for (int skip = 0; skip < 4; ++skip) {
+            double eta = 0.0;
+            for (int a = 0; a < 4; ++a) {
+                if (a != skip) eta += h[a];
+            }
+            const double term = w_face * std::exp(eta / 3.0);
+            value += term;
+            for (int a = 0; a < 4; ++a) {
+                if (a != skip) grad[a] += term / 3.0;
+            }
+        }
+
+        const double term = w_centroid * std::exp((h[0] + h[1] + h[2] + h[3]) / 4.0);
+        value += term;
+        for (int a = 0; a < 4; ++a) {
+            grad[a] += term / 4.0;
+        }
+    } else {
+        stop("Subdivision-linear integration supports only triangles and tetrahedra.");
+    }
+
+    for (int a = 0; a < n; ++a) {
+        grad[a] *= volume;
+    }
+    return volume * value;
+}
+
 //' Integrate a log-linear density over simplexes
 //'
 //' For each row of `h`, computes `volume * E[exp(sum_i lambda_i h_i)]`
@@ -1023,6 +1105,7 @@ List spatial_log_density_objective_simplex_cpp(
     const double taylor_tol,
     const int taylor_max_terms,
     const int gauss_order,
+    const int integration_method,
     const int n_threads
 ) {
     const int n_obs = obs_basis_id.nrow();
@@ -1078,6 +1161,9 @@ List spatial_log_density_objective_simplex_cpp(
     if (gauss_order < 2) {
         stop("gauss_order must be at least 2.");
     }
+    if (integration_method < 0 || integration_method > 1) {
+        stop("integration_method must be 0 for analytic or 1 for subdivision-linear.");
+    }
 
     const int actual_threads = log_density_resolve_threads(n_threads);
     std::vector<double> objective_by_thread(actual_threads, 0.0);
@@ -1118,18 +1204,24 @@ List spatial_log_density_objective_simplex_cpp(
                 h_i[a] = par[simplex_basis_id(i, a)];
             }
             std::vector<double> grad_i(n_active, 0.0);
-            int method_i = 0;
-            const double integral_i = simplex_log_density_integral_one(
-                h_i,
-                simplex_volume.size() == 1 ? simplex_volume[0] : simplex_volume[i],
-                grad_i,
-                taylor_radius,
-                close_tol,
-                taylor_tol,
-                taylor_max_terms,
-                gauss_order,
-                method_i
-            );
+            const double volume_i = simplex_volume.size() == 1 ? simplex_volume[0] : simplex_volume[i];
+            double integral_i = 0.0;
+            if (integration_method == 0) {
+                int method_i = 0;
+                integral_i = simplex_log_density_integral_one(
+                    h_i,
+                    volume_i,
+                    grad_i,
+                    taylor_radius,
+                    close_tol,
+                    taylor_tol,
+                    taylor_max_terms,
+                    gauss_order,
+                    method_i
+                );
+            } else {
+                integral_i = simplex_log_density_subdivision_linear_one(h_i, volume_i, grad_i);
+            }
             local_objective += integral_i;
             for (int a = 0; a < n_active; ++a) {
                 local_grad[simplex_basis_id(i, a)] += grad_i[a];

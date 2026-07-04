@@ -23,6 +23,7 @@ spatial_basis_log_density_field(
   lambda_laplacian = 0,
   domain_expansion_steps = 0L,
   domain_expansion_axes = c("xyz", "xy"),
+  integration_method = c("subdivision_linear", "analytic"),
   maxit = 100L,
   reltol = 1e-06,
   n_threads = NULL,
@@ -79,6 +80,11 @@ touched by transcripts. A value of zero keeps the occupied-domain behavior.}
 \item{domain_expansion_axes}{Character; \code{"xyz"} expands along all basis-graph
 edges, while \code{"xy"} expands only along edges with no z displacement. The
 \code{"xy"} option is mainly useful for thin 3D samples.}
+
+\item{integration_method}{Character; \code{"subdivision_linear"} uses a positive
+piecewise-linear interpolation approximation over the barycentric
+subdivision of each simplex. \code{"analytic"} uses the exact log-linear
+simplex integral with Taylor/Gauss fallbacks.}
 
 \item{maxit}{Maximum L-BFGS iterations.}
 

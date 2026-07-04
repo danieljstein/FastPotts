@@ -81,6 +81,10 @@ make_log_density_domain_simplex <- function(
 #' @param domain_expansion_axes Character; `"xyz"` expands along all basis-graph
 #'   edges, while `"xy"` expands only along edges with no z displacement. The
 #'   `"xy"` option is mainly useful for thin 3D samples.
+#' @param integration_method Character; `"subdivision_linear"` uses a positive
+#'   piecewise-linear interpolation approximation over the barycentric
+#'   subdivision of each simplex. `"analytic"` uses the exact log-linear
+#'   simplex integral with Taylor/Gauss fallbacks.
 #' @param maxit Maximum L-BFGS iterations.
 #' @param reltol Relative convergence tolerance.
 #' @param n_threads Integer number of OpenMP threads. If `NULL`, uses runtime
@@ -111,6 +115,7 @@ spatial_basis_log_density_field <- function(
     lambda_laplacian = 0,
     domain_expansion_steps = 0L,
     domain_expansion_axes = c("xyz", "xy"),
+    integration_method = c("subdivision_linear", "analytic"),
     maxit = 100L,
     reltol = 1e-6,
     n_threads = NULL,
@@ -119,6 +124,7 @@ spatial_basis_log_density_field <- function(
     basis = normalize_spatial_basis(basis)
     regularization = match.arg(regularization)
     domain_expansion_axes = match.arg(domain_expansion_axes)
+    integration_method = match.arg(integration_method)
     lattice_basis = if (basis == "2d") "tri" else "bcc"
     d = if (basis == "2d") 2L else 3L
     coord_cols = if (basis == "2d") c(x, y) else c(x, y, z)
@@ -238,6 +244,7 @@ spatial_basis_log_density_field <- function(
     }
     par0 = rep(log(pmax(nrow(coords) / volume, 1e-8)), nrow(basis_lattice))
     regularization_id = match(regularization, c("quadratic", "huber", "bounded")) - 1L
+    integration_method_id = match(integration_method, c("analytic", "subdivision_linear")) - 1L
 
     objective = function(par) {
         spatial_log_density_objective_simplex_cpp(
@@ -259,6 +266,7 @@ spatial_basis_log_density_field <- function(
             taylor_tol = 1e-12,
             taylor_max_terms = 80L,
             gauss_order = 20L,
+            integration_method = integration_method_id,
             n_threads = n_threads
         )
     }
@@ -310,7 +318,8 @@ spatial_basis_log_density_field <- function(
             basis = basis,
             s = s,
             origin = origin,
-            integration = "analytic_simplex",
+            integration = if (integration_method == "analytic") "analytic_simplex" else "subdivision_linear",
+            integration_method = integration_method,
             quadrature_subdivision = quadrature_subdivision,
             store_quadrature_coords = store_quadrature_coords,
             return_density = return_density,

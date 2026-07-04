@@ -359,8 +359,8 @@ spatial_log_density_objective_cpp <- function(par, obs_basis_id, obs_basis_weigh
 }
 
 #' @noRd
-spatial_log_density_objective_simplex_cpp <- function(par, obs_basis_id, obs_basis_weight, simplex_basis_id, simplex_volume, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, lambda_laplacian, taylor_radius, close_tol, taylor_tol, taylor_max_terms, gauss_order, n_threads) {
-    .Call(`_FastPotts_spatial_log_density_objective_simplex_cpp`, par, obs_basis_id, obs_basis_weight, simplex_basis_id, simplex_volume, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, lambda_laplacian, taylor_radius, close_tol, taylor_tol, taylor_max_terms, gauss_order, n_threads)
+spatial_log_density_objective_simplex_cpp <- function(par, obs_basis_id, obs_basis_weight, simplex_basis_id, simplex_volume, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, lambda_laplacian, taylor_radius, close_tol, taylor_tol, taylor_max_terms, gauss_order, integration_method, n_threads) {
+    .Call(`_FastPotts_spatial_log_density_objective_simplex_cpp`, par, obs_basis_id, obs_basis_weight, simplex_basis_id, simplex_volume, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, lambda_laplacian, taylor_radius, close_tol, taylor_tol, taylor_max_terms, gauss_order, integration_method, n_threads)
 }
 
 #' @noRd
