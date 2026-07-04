@@ -406,12 +406,14 @@ You can also provide a precomputed transcript density, for example from
 density_fit <- spatial_basis_log_density_field(
     transcripts_df = fit$transcripts_df,
     posterior = fit$marginals,
-    basis = "2d",
+    basis = "3d",
     s = 2,
-    quadrature_subdivision = 4,
+    integration_method = "subdivision_linear",
+    domain_expansion_steps = 1L,
+    domain_expansion_axes = "xy",
     regularization = "bounded",
-    lambda = 0.1,
-    lambda_laplacian = 0.1
+    lambda = 1,
+    lambda_laplacian = 100
 )
 
 partition <- partition_transcripts_watershed(
@@ -425,6 +427,10 @@ partition <- partition_transcripts_watershed(
 When `density` is supplied, the watershed uses those positive values directly
 for graph ascent and saddle calculations instead of estimating graph-kernel
 density internally.
+
+For 2D data, use `basis = "2d"` and omit `domain_expansion_axes`; for 3D thin
+tissue slabs, `domain_expansion_axes = "xy"` expands the density integration
+domain laterally without filling through z.
 
 Inspect:
 
