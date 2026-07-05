@@ -226,7 +226,10 @@ finalize_density_basis_design <- function(obs_basis_id, quad_basis_id, basis_lat
 #' @param sigma Positive bounded-penalty slope scale. Used only when
 #'   `regularization = "bounded"`.
 #' @param lambda_laplacian Non-negative strength for a graph Laplacian
-#'   curvature penalty on the basis-point log-density field.
+#'   curvature penalty on the basis-point log-density field. The supplied value
+#'   is scaled internally by `density_s^4`, where `density_s = s /
+#'   basis_subdivision`, so that the parameter is approximately invariant to the
+#'   density mesh size.
 #' @param maxit Maximum L-BFGS iterations.
 #' @param reltol Relative convergence tolerance.
 #' @param n_threads Integer number of OpenMP threads. If `NULL`, uses runtime
@@ -437,6 +440,7 @@ spatial_basis_total_density_field <- function(
         }
         basis_edges = build_lattice_neighbor_edges(basis_lattice_density, basis = lattice_basis, s = density_s)
     }
+    lambda_laplacian_effective = lambda_laplacian / (density_s^4)
 
     quadrature = list(
         coords = if (isTRUE(store_quadrature_coords)) parent_quadrature$coords else NULL,
@@ -475,7 +479,7 @@ spatial_basis_total_density_field <- function(
             regularization = regularization_id,
             delta = delta,
             sigma = sigma,
-            lambda_laplacian = lambda_laplacian,
+            lambda_laplacian = lambda_laplacian_effective,
             n_threads = n_threads
         )
     }
@@ -528,6 +532,7 @@ spatial_basis_total_density_field <- function(
             delta = delta,
             sigma = sigma,
             lambda_laplacian = lambda_laplacian,
+            lambda_laplacian_effective = lambda_laplacian_effective,
             maxit = maxit,
             reltol = reltol
         )

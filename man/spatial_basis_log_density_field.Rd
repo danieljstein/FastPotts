@@ -71,7 +71,9 @@ log-density slopes.}
 
 \item{lambda_laplacian}{Non-negative strength for a graph Laplacian
 curvature penalty on the basis-point log-density field. This penalizes
-deviations from a distance-weighted neighbor average.}
+deviations from a distance-weighted neighbor average. The supplied value is
+scaled internally by \code{s^4} so that the parameter is approximately invariant
+to the basis mesh size.}
 
 \item{domain_expansion_steps}{Non-negative integer number of basis-graph
 dilation steps used to expand the integration domain beyond basis vertices

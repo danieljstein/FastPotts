@@ -78,7 +78,9 @@ log-density slopes.}
 \code{regularization = "bounded"}.}
 
 \item{lambda_laplacian}{Non-negative strength for a graph Laplacian
-curvature penalty on the basis-point log-density field.}
+curvature penalty on the basis-point log-density field. The supplied value
+is scaled internally by \code{density_s^4}, where \code{density_s = s / basis_subdivision}, so that the parameter is approximately invariant to the
+density mesh size.}
 
 \item{maxit}{Maximum L-BFGS iterations.}
 

@@ -210,13 +210,26 @@ An optional graph Laplacian penalty is also available:
 
 $$
 R_{\Delta}(w)
-= \frac{\lambda_{\Delta}}{2}
+= \frac{\lambda_{\Delta,\mathrm{eff}}}{2}
   \frac{1}{M}
   \sum_a (\Delta w_a)^2.
 $$
 
 Here $\Delta w_a$ is the deviation of $w_a$ from a distance-weighted average of
 neighboring density-basis vertices.
+
+The user-supplied `lambda_laplacian` is converted to the effective value:
+
+$$
+\lambda_{\Delta,\mathrm{eff}}
+=
+\frac{\lambda_{\Delta}}{s_{\mathrm{density}}^4},
+$$
+
+where $s_{\mathrm{density}} = s / \text{basis\_subdivision}$ is the density
+basis mesh size. This makes the parameter approximately invariant to the
+density mesh size. The returned `parameters` list stores both the user value
+and the effective value used by the optimizer.
 
 The full fitted objective is:
 

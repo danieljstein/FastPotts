@@ -74,7 +74,9 @@ make_log_density_domain_simplex <- function(
 #'   `regularization = "bounded"`.
 #' @param lambda_laplacian Non-negative strength for a graph Laplacian
 #'   curvature penalty on the basis-point log-density field. This penalizes
-#'   deviations from a distance-weighted neighbor average.
+#'   deviations from a distance-weighted neighbor average. The supplied value is
+#'   scaled internally by `s^4` so that the parameter is approximately invariant
+#'   to the basis mesh size.
 #' @param domain_expansion_steps Non-negative integer number of basis-graph
 #'   dilation steps used to expand the integration domain beyond basis vertices
 #'   touched by transcripts. A value of zero keeps the occupied-domain behavior.
@@ -232,6 +234,7 @@ spatial_basis_log_density_field <- function(
         message("Building basis edge design...")
     }
     basis_edges = build_lattice_neighbor_edges(basis_lattice, basis = lattice_basis, s = s)
+    lambda_laplacian_effective = lambda_laplacian / (s^4)
 
     obs_basis_id = design$basis_id - 1L
     obs_basis_weight = design$basis_weight
@@ -260,7 +263,7 @@ spatial_basis_log_density_field <- function(
             regularization = regularization_id,
             delta = delta,
             sigma = sigma,
-            lambda_laplacian = lambda_laplacian,
+            lambda_laplacian = lambda_laplacian_effective,
             taylor_radius = 1,
             close_tol = 1e-6,
             taylor_tol = 1e-12,
@@ -328,6 +331,7 @@ spatial_basis_log_density_field <- function(
             delta = delta,
             sigma = sigma,
             lambda_laplacian = lambda_laplacian,
+            lambda_laplacian_effective = lambda_laplacian_effective,
             domain_expansion_steps = domain_expansion_steps,
             domain_expansion_axes = domain_expansion_axes,
             maxit = maxit,

@@ -319,13 +319,26 @@ The penalty is:
 
 $$
 R_{\Delta}(w)
-= \lambda_{\Delta}
+= \lambda_{\Delta,\mathrm{eff}}
   \frac{1}{2M}
   \sum_a
   \left[(\Delta w)_a\right]^2,
 $$
 
 where `M` is the number of basis points.
+
+The user-supplied `lambda_laplacian` is converted to the effective value:
+
+$$
+\lambda_{\Delta,\mathrm{eff}}
+=
+\frac{\lambda_{\Delta}}{s^4},
+$$
+
+where $s$ is the spatial basis mesh size. This keeps the Laplacian penalty
+approximately invariant to the mesh size while preserving the existing
+graph-average residual. The returned `parameters` list stores both
+`lambda_laplacian` and `lambda_laplacian_effective`.
 
 This penalty suppresses isolated speckles and jagged curvature by encouraging
 each basis coefficient to agree with a local linear/harmonic continuation from
