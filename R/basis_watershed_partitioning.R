@@ -459,8 +459,23 @@ basis_watershed_gene_counts <- function(
     if (nrow(transcripts_df) != n) {
         stop("transcripts_df must have one row per transcript assignment.", call. = FALSE)
     }
-    if (!is.null(posterior)) {
+    if (!is.null(posterior) && mode == "weighted") {
         posterior = normalize_posterior_matrix(posterior, n)
+        if (is.null(colnames(posterior))) {
+            stop("posterior must have column names matching cell types.", call. = FALSE)
+        }
+    } else if (!is.null(posterior)) {
+        posterior = as.matrix(posterior)
+        storage.mode(posterior) = "double"
+        if (nrow(posterior) != n) {
+            stop("posterior must have one row per transcript.", call. = FALSE)
+        }
+        if (ncol(posterior) < 1L) {
+            stop("posterior must have at least one column.", call. = FALSE)
+        }
+        if (any(!is.finite(posterior)) || any(posterior < 0)) {
+            stop("posterior must contain finite non-negative values.", call. = FALSE)
+        }
         if (is.null(colnames(posterior))) {
             stop("posterior must have column names matching cell types.", call. = FALSE)
         }
@@ -476,9 +491,10 @@ basis_watershed_gene_counts <- function(
     names(cell_id_lookup) = cell_levels
     basin_lookup = basin_cell_lookup(basis_partition)
 
-    ii = integer()
-    jj = integer()
-    xx = numeric()
+    ii = list()
+    jj = list()
+    xx = list()
+    part_i = 0L
 
     if (mode == "max_posterior") {
         if (!is.null(posterior)) {
@@ -499,9 +515,10 @@ basis_watershed_gene_counts <- function(
             keep = !is.na(cell_name)
             rows = rows[keep]
             cell_name = cell_name[keep]
-            ii = c(ii, gene_id[rows])
-            jj = c(jj, unname(cell_id_lookup[cell_name]))
-            xx = c(xx, rep(1, length(rows)))
+            part_i = part_i + 1L
+            ii[[part_i]] = gene_id[rows]
+            jj[[part_i]] = unname(cell_id_lookup[cell_name])
+            xx[[part_i]] = rep(1, length(rows))
         }
     } else {
         for (cell_type in cell_types) {
@@ -512,11 +529,15 @@ basis_watershed_gene_counts <- function(
             keep = !is.na(cell_name)
             rows = rows[keep]
             cell_name = cell_name[keep]
-            ii = c(ii, gene_id[rows])
-            jj = c(jj, unname(cell_id_lookup[cell_name]))
-            xx = c(xx, posterior[rows, cell_type])
+            part_i = part_i + 1L
+            ii[[part_i]] = gene_id[rows]
+            jj[[part_i]] = unname(cell_id_lookup[cell_name])
+            xx[[part_i]] = posterior[rows, cell_type]
         }
     }
+    ii = if (length(ii) > 0L) unlist(ii, use.names = FALSE) else integer()
+    jj = if (length(jj) > 0L) unlist(jj, use.names = FALSE) else integer()
+    xx = if (length(xx) > 0L) unlist(xx, use.names = FALSE) else numeric()
 
     Matrix::sparseMatrix(
         i = ii,

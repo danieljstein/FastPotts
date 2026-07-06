@@ -25,7 +25,7 @@ normalize_posterior_matrix <- function(posterior, n) {
     if (any(row_total <= 0)) {
         stop("Every posterior row must have positive mass.", call. = FALSE)
     }
-    sweep(posterior, 1L, row_total, "/")
+    posterior / row_total
 }
 
 posterior_js_divergence_edges <- function(posterior, from, to, eps = 1e-12) {
