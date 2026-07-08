@@ -419,6 +419,118 @@ partition_basis_watershed_initial <- function(
     )
 }
 
+#' Initial basis-level watershed basins from total density only
+#'
+#' Runs density ascent on a spatial basis graph using only
+#' `density_fit$total_density_basis`, without a segmentation fit, spatial prior,
+#' or transcript cell-type posteriors. This is useful when the desired
+#' partition should follow total transcript density rather than cell-type-
+#' specific density.
+#'
+#' @param density_fit Result from [spatial_basis_log_density_field()] or
+#'   [spatial_basis_total_density_field()] containing `total_density_basis`,
+#'   `basis_points`, `basis_edges`, and transcript basis interpolation.
+#' @param distance_weight Non-negative penalty for long uphill ascent edges on
+#'   the basis graph.
+#' @param cell_type Character label used for the single total-density watershed
+#'   column in transcript assignments and count matrices.
+#' @param show_progress Logical; print progress messages.
+#'
+#' @return A basis-watershed partition object compatible with
+#'   [basis_watershed_gene_counts()]. It contains one active cell type named by
+#'   `cell_type`.
+#' @export
+partition_basis_watershed_total <- function(
+    density_fit,
+    distance_weight = 0,
+    cell_type = "total",
+    show_progress = TRUE
+) {
+    if (is.null(density_fit$total_density_basis)) {
+        stop("density_fit must contain total_density_basis.", call. = FALSE)
+    }
+    if (is.null(density_fit$basis_points) || is.null(density_fit$basis_edges)) {
+        stop("density_fit must contain basis_points and basis_edges.", call. = FALSE)
+    }
+    if (is.null(density_fit$transcript_basis_id)) {
+        stop("density_fit must contain transcript_basis_id.", call. = FALSE)
+    }
+    check_finite_scalar(distance_weight, "distance_weight", lower = 0)
+    if (length(cell_type) != 1L || is.na(cell_type) || !nzchar(cell_type)) {
+        stop("cell_type must be a non-empty character scalar.", call. = FALSE)
+    }
+
+    basis_points = as.matrix(density_fit$basis_points)
+    storage.mode(basis_points) = "double"
+    total_density = as.numeric(density_fit$total_density_basis)
+    if (length(total_density) != nrow(basis_points) || any(!is.finite(total_density)) || any(total_density <= 0)) {
+        stop("density_fit$total_density_basis must contain one positive finite value per density basis point.", call. = FALSE)
+    }
+    basis_edges = as.data.frame(density_fit$basis_edges)
+    if (!all(c("from", "to", "distance") %in% colnames(basis_edges))) {
+        stop("density_fit$basis_edges must contain from, to, and distance columns.", call. = FALSE)
+    }
+    if (nrow(basis_edges) == 0L) {
+        stop("density_fit$basis_edges must contain at least one edge.", call. = FALSE)
+    }
+
+    if (show_progress) {
+        message("Running basis watershed on total density...")
+    }
+    n_basis = nrow(basis_points)
+    active = rep(TRUE, n_basis)
+    ascent = density_ascent_active_partition_cpp(
+        as.integer(basis_edges$from),
+        as.integer(basis_edges$to),
+        as.numeric(basis_edges$distance),
+        total_density,
+        active,
+        distance_weight
+    )
+
+    cell_types = cell_type
+    parent = root = basin = mode_basis = type_density = active_start = list()
+    parent[[cell_type]] = ascent$parent
+    root[[cell_type]] = ascent$root
+    basin[[cell_type]] = ascent$basin
+    mode_basis[[cell_type]] = ascent$mode_basis
+    type_density[[cell_type]] = total_density
+    active_start[[cell_type]] = active
+
+    transcript_assignment = assign_transcripts_to_basis_basins(
+        transcript_basis_id = density_fit$transcript_basis_id,
+        type_density = type_density,
+        basin = basin,
+        active_start = active_start,
+        cell_types = cell_types
+    )
+
+    list(
+        basis_points = basis_points,
+        basis_lattice = density_fit$basis_lattice,
+        basis_edges = basis_edges,
+        total_density_basis = total_density,
+        spatial_prior_basis = NULL,
+        posterior_support_basis = NULL,
+        active_start = active_start,
+        active_cell_types = cell_types,
+        type_density_basis = type_density,
+        parent = parent,
+        root = root,
+        basin = basin,
+        mode_basis = mode_basis,
+        transcript_mode_basis = transcript_assignment$transcript_mode_basis,
+        transcript_basin = transcript_assignment$transcript_basin,
+        basin_summary = summarize_active_basis_basins(basin, mode_basis, active_start, type_density, cell_types),
+        parameters = list(
+            mode = "total_density",
+            distance_weight = distance_weight,
+            density_basis_subdivision = density_fit$parameters$basis_subdivision,
+            density_quadrature_subdivision = density_fit$parameters$quadrature_subdivision
+        )
+    )
+}
+
 #' Collect transcript genes into basis-watershed basin counts
 #'
 #' Builds a sparse gene-by-basin count matrix from the transcript assignments
@@ -459,12 +571,15 @@ basis_watershed_gene_counts <- function(
     if (nrow(transcripts_df) != n) {
         stop("transcripts_df must have one row per transcript assignment.", call. = FALSE)
     }
+    total_only = mode == "max_posterior" &&
+        length(cell_types) == 1L &&
+        isTRUE(basis_partition$parameters$mode == "total_density")
     if (!is.null(posterior) && mode == "weighted") {
         posterior = normalize_posterior_matrix(posterior, n)
         if (is.null(colnames(posterior))) {
             stop("posterior must have column names matching cell types.", call. = FALSE)
         }
-    } else if (!is.null(posterior)) {
+    } else if (!is.null(posterior) && !total_only) {
         posterior = as.matrix(posterior)
         storage.mode(posterior) = "double"
         if (nrow(posterior) != n) {
@@ -497,7 +612,9 @@ basis_watershed_gene_counts <- function(
     part_i = 0L
 
     if (mode == "max_posterior") {
-        if (!is.null(posterior)) {
+        if (total_only) {
+            max_type = rep(cell_types, n)
+        } else if (!is.null(posterior)) {
             max_type = colnames(posterior)[max.col(posterior, ties.method = "first")]
         } else {
             score = matrix(-Inf, nrow = n, ncol = length(cell_types), dimnames = list(NULL, cell_types))
