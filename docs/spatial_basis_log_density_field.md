@@ -410,7 +410,6 @@ parameters
 ```r
 log_density_fit <- spatial_basis_log_density_field(
     transcripts_df = fit$transcripts_df,
-    posterior = fit$marginals,
     basis = "3d",
     s = 2,
     integration_method = "subdivision_linear",
@@ -422,6 +421,32 @@ log_density_fit <- spatial_basis_log_density_field(
     sigma = 1,
     lambda_laplacian = 100,
     maxit = 100
+)
+```
+
+By default, the fit stores the basis-level density field and transcript
+interpolation design, but omits derived transcript-level vectors/matrices:
+`total_density`, `eta`, cell-type `density`, and `posterior`. This keeps large
+fits smaller on disk and avoids post-fit transcript-level prediction
+allocations unless requested.
+
+To reconstruct transcript-level total density later:
+
+```r
+pred <- predict_spatial_basis_log_density_field(
+    log_density_fit,
+    what = "total_density"
+)
+```
+
+To request cell-type-specific density, supply posterior explicitly:
+
+```r
+posterior <- predict_spatial_basis_segmentation(fit, what = "marginals")$marginals
+pred <- predict_spatial_basis_log_density_field(
+    log_density_fit,
+    posterior = posterior,
+    what = "density"
 )
 ```
 

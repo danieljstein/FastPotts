@@ -7,7 +7,10 @@
 spatial_basis_log_density_field(
   transcripts_df,
   posterior = NULL,
-  return_density = !is.null(posterior),
+  return_density = FALSE,
+  return_total_density = FALSE,
+  return_eta = FALSE,
+  store_posterior = FALSE,
   basis = c("3d", "2d", "tri", "bcc"),
   s,
   x = "x_location",
@@ -27,7 +30,8 @@ spatial_basis_log_density_field(
   maxit = 100L,
   reltol = 1e-06,
   n_threads = NULL,
-  show_progress = TRUE
+  show_progress = TRUE,
+  optim = c("summary", "full")
 )
 }
 \arguments{
@@ -39,7 +43,16 @@ total density into cell-type-specific densities.}
 
 \item{return_density}{Logical; if \code{TRUE} and \code{posterior} is supplied, return
 the transcript-by-cell-type density matrix \code{total_density * posterior}.
-Set to \code{FALSE} for large datasets when only \code{total_density} is needed.}
+Set to \code{FALSE} for large datasets when only basis-level density is needed.}
+
+\item{return_total_density}{Logical; if \code{TRUE}, return the fitted
+transcript-level total density vector.}
+
+\item{return_eta}{Logical; if \code{TRUE}, return the fitted transcript-level
+log-density vector.}
+
+\item{store_posterior}{Logical; if \code{TRUE}, store the normalized posterior
+matrix in the returned object. The posterior is not used for fitting.}
 
 \item{basis}{Character; \code{"2d"}/\code{"tri"} or \code{"3d"}/\code{"bcc"}.}
 
@@ -96,11 +109,15 @@ simplex integral with Taylor/Gauss fallbacks.}
 default.}
 
 \item{show_progress}{Logical; print progress messages.}
+
+\item{optim}{Character; \code{"summary"} stores optimizer diagnostics without the
+fitted parameter vector, while \code{"full"} stores the complete \code{\link[stats:optim]{stats::optim()}}
+result.}
 }
 \value{
-A list with fitted total density, optional cell-type density,
-fitted basis coefficients, analytic simplex domain, basis design,
-transcript interpolation design, optimizer result, and effective
+A list with optional transcript-level density outputs, fitted
+basis-level density coefficients, analytic simplex domain, basis design,
+transcript interpolation design, optimizer diagnostics, and effective
 parameters.
 }
 \description{

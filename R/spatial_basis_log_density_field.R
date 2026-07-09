@@ -53,7 +53,13 @@ make_log_density_domain_simplex <- function(
 #'   total density into cell-type-specific densities.
 #' @param return_density Logical; if `TRUE` and `posterior` is supplied, return
 #'   the transcript-by-cell-type density matrix `total_density * posterior`.
-#'   Set to `FALSE` for large datasets when only `total_density` is needed.
+#'   Set to `FALSE` for large datasets when only basis-level density is needed.
+#' @param return_total_density Logical; if `TRUE`, return the fitted
+#'   transcript-level total density vector.
+#' @param return_eta Logical; if `TRUE`, return the fitted transcript-level
+#'   log-density vector.
+#' @param store_posterior Logical; if `TRUE`, store the normalized posterior
+#'   matrix in the returned object. The posterior is not used for fitting.
 #' @param basis Character; `"2d"`/`"tri"` or `"3d"`/`"bcc"`.
 #' @param s Positive spatial basis mesh size.
 #' @param x,y,z Character coordinate column names.
@@ -92,16 +98,22 @@ make_log_density_domain_simplex <- function(
 #' @param n_threads Integer number of OpenMP threads. If `NULL`, uses runtime
 #'   default.
 #' @param show_progress Logical; print progress messages.
+#' @param optim Character; `"summary"` stores optimizer diagnostics without the
+#'   fitted parameter vector, while `"full"` stores the complete [stats::optim()]
+#'   result.
 #'
-#' @return A list with fitted total density, optional cell-type density,
-#'   fitted basis coefficients, analytic simplex domain, basis design,
-#'   transcript interpolation design, optimizer result, and effective
+#' @return A list with optional transcript-level density outputs, fitted
+#'   basis-level density coefficients, analytic simplex domain, basis design,
+#'   transcript interpolation design, optimizer diagnostics, and effective
 #'   parameters.
 #' @export
 spatial_basis_log_density_field <- function(
     transcripts_df,
     posterior = NULL,
-    return_density = !is.null(posterior),
+    return_density = FALSE,
+    return_total_density = FALSE,
+    return_eta = FALSE,
+    store_posterior = FALSE,
     basis = c("3d", "2d", "tri", "bcc"),
     s,
     x = "x_location",
@@ -121,12 +133,14 @@ spatial_basis_log_density_field <- function(
     maxit = 100L,
     reltol = 1e-6,
     n_threads = NULL,
-    show_progress = TRUE
+    show_progress = TRUE,
+    optim = c("summary", "full")
 ) {
     basis = normalize_spatial_basis(basis)
     regularization = match.arg(regularization)
     domain_expansion_axes = match.arg(domain_expansion_axes)
     integration_method = match.arg(integration_method)
+    optim = match.arg(optim)
     lattice_basis = if (basis == "2d") "tri" else "bcc"
     d = if (basis == "2d") 2L else 3L
     coord_cols = if (basis == "2d") c(x, y) else c(x, y, z)
@@ -155,6 +169,15 @@ spatial_basis_log_density_field <- function(
     }
     if (!is.logical(return_density) || length(return_density) != 1L || is.na(return_density)) {
         stop("return_density must be TRUE or FALSE.", call. = FALSE)
+    }
+    if (!is.logical(return_total_density) || length(return_total_density) != 1L || is.na(return_total_density)) {
+        stop("return_total_density must be TRUE or FALSE.", call. = FALSE)
+    }
+    if (!is.logical(return_eta) || length(return_eta) != 1L || is.na(return_eta)) {
+        stop("return_eta must be TRUE or FALSE.", call. = FALSE)
+    }
+    if (!is.logical(store_posterior) || length(store_posterior) != 1L || is.na(store_posterior)) {
+        stop("store_posterior must be TRUE or FALSE.", call. = FALSE)
     }
     if (length(lambda) != 1L || !is.finite(lambda) || lambda < 0) {
         stop("lambda must be a non-negative finite scalar.", call. = FALSE)
@@ -204,6 +227,9 @@ spatial_basis_log_density_field <- function(
         }
     } else {
         cell_types = character()
+    }
+    if (return_density && is.null(posterior)) {
+        stop("posterior must be supplied when return_density = TRUE.", call. = FALSE)
     }
 
     if (show_progress) {
@@ -286,29 +312,25 @@ spatial_basis_log_density_field <- function(
     )
     warn_spatial_basis_optim_status(opt, maxit)
 
-    pred = spatial_log_density_predict_cpp(
-        par = opt$par,
-        basis_id = obs_basis_id,
-        basis_weight = obs_basis_weight,
-        n_threads = n_threads
-    )
-    total_density = as.numeric(pred$density)
-    eta = as.numeric(pred$eta)
-
-    if (!is.null(posterior) && return_density) {
-        density = posterior * total_density
-        colnames(density) = cell_types
+    need_transcript_prediction = return_density || return_total_density || return_eta
+    pred = if (need_transcript_prediction) {
+        spatial_log_density_predict_cpp(
+            par = opt$par,
+            basis_id = obs_basis_id,
+            basis_weight = obs_basis_weight,
+            n_threads = n_threads
+        )
     } else {
-        density = NULL
+        NULL
     }
 
-    list(
-        density = density,
-        total_density = total_density,
+    out = list(
+        density = NULL,
+        total_density = NULL,
+        eta = NULL,
+        posterior = NULL,
         total_density_basis = as.numeric(exp(opt$par)),
-        eta = eta,
         eta_basis = opt$par,
-        posterior = posterior,
         basis_points = basis_points,
         basis_lattice = basis_lattice,
         basis_edges = basis_edges,
@@ -316,7 +338,7 @@ spatial_basis_log_density_field <- function(
         transcript_basis_weight = design$basis_weight,
         domain = domain,
         quadrature = NULL,
-        optim = opt,
+        optim = if (optim == "full") opt else summarize_spatial_basis_optim(opt),
         parameters = list(
             basis = basis,
             s = s,
@@ -326,6 +348,9 @@ spatial_basis_log_density_field <- function(
             quadrature_subdivision = quadrature_subdivision,
             store_quadrature_coords = store_quadrature_coords,
             return_density = return_density,
+            return_total_density = return_total_density,
+            return_eta = return_eta,
+            store_posterior = store_posterior,
             lambda = lambda,
             regularization = regularization,
             delta = delta,
@@ -335,7 +360,132 @@ spatial_basis_log_density_field <- function(
             domain_expansion_steps = domain_expansion_steps,
             domain_expansion_axes = domain_expansion_axes,
             maxit = maxit,
-            reltol = reltol
+            reltol = reltol,
+            x = x,
+            y = y,
+            z = z,
+            optim = optim
         )
     )
+
+    if (return_density) {
+        out$density = posterior * as.numeric(pred$density)
+        colnames(out$density) = cell_types
+    }
+    if (return_total_density) {
+        out$total_density = as.numeric(pred$density)
+    }
+    if (return_eta) {
+        out$eta = as.numeric(pred$eta)
+    }
+    if (store_posterior) {
+        out$posterior = posterior
+    }
+
+    out
+}
+
+#' Reconstruct outputs from a spatial log-density fit
+#'
+#' Computes derived transcript-level outputs from a fitted
+#' [spatial_basis_log_density_field()] object. This is useful for compact fits
+#' where `total_density`, `eta`, or cell-type `density` were not returned during
+#' fitting.
+#'
+#' @param fit Result from [spatial_basis_log_density_field()].
+#' @param transcripts_df Optional transcript-level data frame. If `NULL`, uses
+#'   `fit$transcript_basis_id` and `fit$transcript_basis_weight` for the
+#'   original fitted transcript locations.
+#' @param posterior Optional transcript-by-cell-type posterior matrix. Required
+#'   when requesting `"density"` unless `fit$posterior` was stored.
+#' @param what Character vector of outputs to compute. Options are
+#'   `"total_density"`, `"eta"`, and `"density"`.
+#' @param x,y,z Character coordinate column names used when `transcripts_df` is
+#'   supplied.
+#' @param n_threads Integer number of OpenMP threads for prediction. If `NULL`,
+#'   uses the OpenMP runtime default.
+#'
+#' @return A list containing the requested outputs.
+#'
+#' @export
+predict_spatial_basis_log_density_field <- function(
+    fit,
+    transcripts_df = NULL,
+    posterior = NULL,
+    what = c("total_density", "eta", "density"),
+    x = fit$parameters$x %||% "x_location",
+    y = fit$parameters$y %||% "y_location",
+    z = fit$parameters$z %||% "z_location",
+    n_threads = NULL
+) {
+    what = match.arg(what, several.ok = TRUE)
+    if (is.null(fit$eta_basis) || is.null(fit$basis_lattice)) {
+        stop("fit must contain eta_basis and basis_lattice.", call. = FALSE)
+    }
+    if (is.null(n_threads)) {
+        n_threads = 0L
+    } else if (length(n_threads) != 1L || !is.finite(n_threads) || n_threads < 1) {
+        stop("n_threads must be NULL or a positive integer.", call. = FALSE)
+    } else {
+        n_threads = as.integer(n_threads)
+    }
+
+    if (is.null(transcripts_df)) {
+        if (is.null(fit$transcript_basis_id) || is.null(fit$transcript_basis_weight)) {
+            stop(
+                "transcripts_df must be supplied when fit does not contain transcript_basis_id and transcript_basis_weight.",
+                call. = FALSE
+            )
+        }
+        basis_id = as.matrix(fit$transcript_basis_id) - 1L
+        basis_weight = as.matrix(fit$transcript_basis_weight)
+        n = nrow(basis_id)
+    } else {
+        basis = normalize_spatial_basis(fit$parameters$basis)
+        coord_cols = if (basis == "2d") c(x, y) else c(x, y, z)
+        missing_cols = setdiff(coord_cols, colnames(transcripts_df))
+        if (length(missing_cols) > 0L) {
+            stop("Missing coordinate column(s): ", paste(missing_cols, collapse = ", "), call. = FALSE)
+        }
+        basis_n_threads = if (n_threads == 0L) NULL else n_threads
+        coords = as.matrix(transcripts_df[, coord_cols, drop = FALSE])
+        storage.mode(coords) = "double"
+        bary = if (basis == "2d") {
+            tri_barycentric(coords, s = fit$parameters$s, origin = fit$parameters$origin, n_threads = basis_n_threads)
+        } else {
+            bcc_barycentric(coords, s = fit$parameters$s, origin = fit$parameters$origin, n_threads = basis_n_threads)
+        }
+        design = remap_spatial_basis_design(basis_design_from_barycentric(bary), fit$basis_lattice)
+        basis_id = design$basis_id - 1L
+        basis_weight = design$basis_weight
+        n = nrow(basis_id)
+    }
+
+    pred = spatial_log_density_predict_cpp(
+        par = fit$eta_basis,
+        basis_id = basis_id,
+        basis_weight = basis_weight,
+        n_threads = n_threads
+    )
+
+    out = list()
+    if ("total_density" %in% what) {
+        out$total_density = as.numeric(pred$density)
+    }
+    if ("eta" %in% what) {
+        out$eta = as.numeric(pred$eta)
+    }
+    if ("density" %in% what) {
+        if (is.null(posterior)) {
+            posterior = fit$posterior
+        }
+        if (is.null(posterior)) {
+            stop("posterior must be supplied when requesting density.", call. = FALSE)
+        }
+        posterior = normalize_posterior_matrix(posterior, n)
+        out$density = posterior * as.numeric(pred$density)
+        colnames(out$density) = colnames(posterior)
+    }
+
+    out
 }
