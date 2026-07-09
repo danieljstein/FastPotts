@@ -380,9 +380,10 @@ List make_log_density_domain_expanded_cpp(
             out_points(i, 0) = origin[0] + s * (static_cast<double>(lattice[i].x) + 0.5 * static_cast<double>(lattice[i].y));
             out_points(i, 1) = origin[1] + s * (std::sqrt(3.0) / 2.0) * static_cast<double>(lattice[i].y);
         } else {
-            out_points(i, 0) = origin[0] + s * static_cast<double>(lattice[i].x);
-            out_points(i, 1) = origin[1] + s * static_cast<double>(lattice[i].y);
-            out_points(i, 2) = origin[2] + s * static_cast<double>(lattice[i].z);
+            const double half_s = 0.5 * s;
+            out_points(i, 0) = origin[0] + half_s * static_cast<double>(lattice[i].x);
+            out_points(i, 1) = origin[1] + half_s * static_cast<double>(lattice[i].y);
+            out_points(i, 2) = origin[2] + half_s * static_cast<double>(lattice[i].z);
         }
     }
 
