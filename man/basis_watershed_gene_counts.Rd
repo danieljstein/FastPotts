@@ -9,7 +9,7 @@ basis_watershed_gene_counts(
   transcripts_df,
   posterior = NULL,
   gene = "feature_name",
-  mode = c("max_posterior", "weighted")
+  mode = c("max_posterior", "weighted", "density")
 )
 }
 \arguments{
@@ -19,16 +19,15 @@ basis_watershed_gene_counts(
 density and segmentation fits.}
 
 \item{posterior}{Optional transcript-by-cell-type posterior matrix. Required
-for \code{mode = "weighted"} and used for max-posterior assignment in
-\code{mode = "max_posterior"}. If \code{NULL}, \code{mode = "max_posterior"} uses the
-active cell type with the largest basis-watershed type density at each
-transcript's selected mode basis point.}
+for \code{mode = "max_posterior"} and \code{mode = "weighted"}.}
 
 \item{gene}{Character gene column name.}
 
 \item{mode}{Character; \code{"max_posterior"} assigns each transcript once to its
-maximum-posterior cell type, while \code{"weighted"} contributes posterior
-weight to each active cell type with a valid transcript basin.}
+maximum-posterior cell type, \code{"weighted"} contributes posterior weight to
+each active cell type with a valid transcript basin, and \code{"density"}
+explicitly uses the active cell type with the largest basis-watershed type
+density at each transcript's selected mode basis point.}
 }
 \value{
 Sparse \code{dgCMatrix} with genes in rows and \code{celltype-modebasis}

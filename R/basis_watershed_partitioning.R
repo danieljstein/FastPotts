@@ -643,14 +643,13 @@ partition_basis_watershed_total <- function(
 #' @param transcripts_df Transcript-level data frame corresponding to the
 #'   density and segmentation fits.
 #' @param posterior Optional transcript-by-cell-type posterior matrix. Required
-#'   for `mode = "weighted"` and used for max-posterior assignment in
-#'   `mode = "max_posterior"`. If `NULL`, `mode = "max_posterior"` uses the
-#'   active cell type with the largest basis-watershed type density at each
-#'   transcript's selected mode basis point.
+#'   for `mode = "max_posterior"` and `mode = "weighted"`.
 #' @param gene Character gene column name.
 #' @param mode Character; `"max_posterior"` assigns each transcript once to its
-#'   maximum-posterior cell type, while `"weighted"` contributes posterior
-#'   weight to each active cell type with a valid transcript basin.
+#'   maximum-posterior cell type, `"weighted"` contributes posterior weight to
+#'   each active cell type with a valid transcript basin, and `"density"`
+#'   explicitly uses the active cell type with the largest basis-watershed type
+#'   density at each transcript's selected mode basis point.
 #'
 #' @return Sparse `dgCMatrix` with genes in rows and `celltype-modebasis`
 #'   initial watershed cells in columns.
@@ -660,7 +659,7 @@ basis_watershed_gene_counts <- function(
     transcripts_df,
     posterior = NULL,
     gene = "feature_name",
-    mode = c("max_posterior", "weighted")
+    mode = c("max_posterior", "weighted", "density")
 ) {
     mode = match.arg(mode)
     if (!gene %in% colnames(transcripts_df)) {
@@ -674,15 +673,18 @@ basis_watershed_gene_counts <- function(
     if (nrow(transcripts_df) != n) {
         stop("transcripts_df must have one row per transcript assignment.", call. = FALSE)
     }
-    total_only = mode == "max_posterior" &&
+    total_only = mode == "density" &&
         length(cell_types) == 1L &&
         isTRUE(basis_partition$parameters$mode == "total_density")
+    if (is.null(posterior) && mode %in% c("max_posterior", "weighted")) {
+        stop("posterior is required when mode = '", mode, "'. Use mode = 'density' to request the density-based fallback.", call. = FALSE)
+    }
     if (!is.null(posterior) && mode == "weighted") {
         posterior = normalize_posterior_matrix(posterior, n)
         if (is.null(colnames(posterior))) {
             stop("posterior must have column names matching cell types.", call. = FALSE)
         }
-    } else if (!is.null(posterior) && !total_only) {
+    } else if (!is.null(posterior) && mode == "max_posterior") {
         posterior = as.matrix(posterior)
         storage.mode(posterior) = "double"
         if (nrow(posterior) != n) {
@@ -697,8 +699,6 @@ basis_watershed_gene_counts <- function(
         if (is.null(colnames(posterior))) {
             stop("posterior must have column names matching cell types.", call. = FALSE)
         }
-    } else if (mode == "weighted") {
-        stop("posterior is required when mode = 'weighted'.", call. = FALSE)
     }
 
     gene_values = as.character(transcripts_df[[gene]])
@@ -714,10 +714,10 @@ basis_watershed_gene_counts <- function(
     xx = list()
     part_i = 0L
 
-    if (mode == "max_posterior") {
+    if (mode %in% c("max_posterior", "density")) {
         if (total_only) {
             max_type = rep(cell_types, n)
-        } else if (!is.null(posterior)) {
+        } else if (mode == "max_posterior") {
             max_type = colnames(posterior)[max.col(posterior, ties.method = "first")]
         } else {
             score = matrix(-Inf, nrow = n, ncol = length(cell_types), dimnames = list(NULL, cell_types))
