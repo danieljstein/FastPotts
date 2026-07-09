@@ -9,6 +9,7 @@ partition_basis_watershed_initial(
   density_fit,
   posterior = NULL,
   min_posterior_support = 0,
+  support_mode = c("max_posterior", "posterior"),
   distance_weight = 0,
   prior_outside = c("nearest", "error"),
   n_threads = NULL,
@@ -27,6 +28,11 @@ materializing the full posterior matrix.}
 
 \item{min_posterior_support}{Minimum posterior-weighted transcript support
 for a density-basis vertex to be an active watershed start for a cell type.}
+
+\item{support_mode}{Character; \code{"max_posterior"} first assigns each
+transcript to its maximum-posterior cell type and contributes support only
+to that type, while \code{"posterior"} uses soft posterior support for active
+starts.}
 
 \item{distance_weight}{Non-negative penalty for long uphill ascent edges on
 the basis graph.}

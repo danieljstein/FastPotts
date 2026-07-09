@@ -209,8 +209,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // spatial_basis_density_support_cpp
-NumericMatrix spatial_basis_density_support_cpp(const NumericVector& par, const IntegerMatrix& segmentation_basis_id, const NumericMatrix& segmentation_basis_weight, const IntegerVector& gene_index, const NumericMatrix& log_signature, const IntegerMatrix& density_basis_id, const NumericMatrix& density_basis_weight, const int n_segmentation_basis, const int n_density_basis, const int n_threads, const int n_cell_types);
-RcppExport SEXP _FastPotts_spatial_basis_density_support_cpp(SEXP parSEXP, SEXP segmentation_basis_idSEXP, SEXP segmentation_basis_weightSEXP, SEXP gene_indexSEXP, SEXP log_signatureSEXP, SEXP density_basis_idSEXP, SEXP density_basis_weightSEXP, SEXP n_segmentation_basisSEXP, SEXP n_density_basisSEXP, SEXP n_threadsSEXP, SEXP n_cell_typesSEXP) {
+NumericMatrix spatial_basis_density_support_cpp(const NumericVector& par, const IntegerMatrix& segmentation_basis_id, const NumericMatrix& segmentation_basis_weight, const IntegerVector& gene_index, const NumericMatrix& log_signature, const IntegerMatrix& density_basis_id, const NumericMatrix& density_basis_weight, const int n_segmentation_basis, const int n_density_basis, const int n_threads, const int n_cell_types, const bool hard_max);
+RcppExport SEXP _FastPotts_spatial_basis_density_support_cpp(SEXP parSEXP, SEXP segmentation_basis_idSEXP, SEXP segmentation_basis_weightSEXP, SEXP gene_indexSEXP, SEXP log_signatureSEXP, SEXP density_basis_idSEXP, SEXP density_basis_weightSEXP, SEXP n_segmentation_basisSEXP, SEXP n_density_basisSEXP, SEXP n_threadsSEXP, SEXP n_cell_typesSEXP, SEXP hard_maxSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -225,7 +225,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const int >::type n_density_basis(n_density_basisSEXP);
     Rcpp::traits::input_parameter< const int >::type n_threads(n_threadsSEXP);
     Rcpp::traits::input_parameter< const int >::type n_cell_types(n_cell_typesSEXP);
-    rcpp_result_gen = Rcpp::wrap(spatial_basis_density_support_cpp(par, segmentation_basis_id, segmentation_basis_weight, gene_index, log_signature, density_basis_id, density_basis_weight, n_segmentation_basis, n_density_basis, n_threads, n_cell_types));
+    Rcpp::traits::input_parameter< const bool >::type hard_max(hard_maxSEXP);
+    rcpp_result_gen = Rcpp::wrap(spatial_basis_density_support_cpp(par, segmentation_basis_id, segmentation_basis_weight, gene_index, log_signature, density_basis_id, density_basis_weight, n_segmentation_basis, n_density_basis, n_threads, n_cell_types, hard_max));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -540,7 +541,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_spatial_basis_objective_cpp", (DL_FUNC) &_FastPotts_spatial_basis_objective_cpp, 17},
     {"_FastPotts_spatial_basis_predict_cpp", (DL_FUNC) &_FastPotts_spatial_basis_predict_cpp, 13},
     {"_FastPotts_spatial_basis_posterior_counts_cpp", (DL_FUNC) &_FastPotts_spatial_basis_posterior_counts_cpp, 9},
-    {"_FastPotts_spatial_basis_density_support_cpp", (DL_FUNC) &_FastPotts_spatial_basis_density_support_cpp, 11},
+    {"_FastPotts_spatial_basis_density_support_cpp", (DL_FUNC) &_FastPotts_spatial_basis_density_support_cpp, 12},
     {"_FastPotts_spatial_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_density_objective_cpp, 24},
     {"_FastPotts_spatial_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_density_predict_cpp, 11},
     {"_FastPotts_make_log_density_domain_simplex_cpp", (DL_FUNC) &_FastPotts_make_log_density_domain_simplex_cpp, 2},

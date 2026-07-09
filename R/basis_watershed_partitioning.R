@@ -185,7 +185,47 @@ compute_basis_type_support <- function(transcript_basis_id, transcript_basis_wei
     support
 }
 
-compute_basis_type_support_from_segmentation_fit <- function(segmentation_fit, density_fit, cell_types, n_threads = NULL) {
+compute_basis_type_support_max_posterior <- function(transcript_basis_id, transcript_basis_weight, posterior, n_basis) {
+    transcript_basis_id = as.matrix(transcript_basis_id)
+    transcript_basis_weight = as.matrix(transcript_basis_weight)
+    posterior = as.matrix(posterior)
+    storage.mode(transcript_basis_id) = "integer"
+    storage.mode(transcript_basis_weight) = "double"
+    storage.mode(posterior) = "double"
+    if (!all(dim(transcript_basis_id) == dim(transcript_basis_weight))) {
+        stop("transcript_basis_id and transcript_basis_weight must have the same dimensions.", call. = FALSE)
+    }
+    if (nrow(posterior) != nrow(transcript_basis_id)) {
+        stop("posterior must have one row per transcript.", call. = FALSE)
+    }
+
+    support = matrix(0, nrow = n_basis, ncol = ncol(posterior))
+    max_type = max.col(posterior, ties.method = "first")
+    for (a in seq_len(ncol(transcript_basis_id))) {
+        ok = !is.na(transcript_basis_id[, a]) & transcript_basis_id[, a] >= 1L & transcript_basis_id[, a] <= n_basis
+        if (!any(ok)) {
+            next
+        }
+        for (k in seq_len(ncol(posterior))) {
+            ok_k = ok & max_type == k
+            if (!any(ok_k)) {
+                next
+            }
+            partial_rows = rowsum(
+                transcript_basis_weight[ok_k, a],
+                group = transcript_basis_id[ok_k, a],
+                reorder = FALSE
+            )
+            support[as.integer(rownames(partial_rows)), k] = support[as.integer(rownames(partial_rows)), k] +
+                as.numeric(partial_rows[, 1L])
+        }
+    }
+    colnames(support) = colnames(posterior)
+    support
+}
+
+compute_basis_type_support_from_segmentation_fit <- function(segmentation_fit, density_fit, cell_types, n_threads = NULL, support_mode = "posterior") {
+    support_mode = match.arg(support_mode, c("posterior", "max_posterior"))
     if (is.null(segmentation_fit$transcripts_df)) {
         stop(
             "posterior is NULL and segmentation_fit does not contain transcripts_df; ",
@@ -265,7 +305,8 @@ compute_basis_type_support_from_segmentation_fit <- function(segmentation_fit, d
         n_segmentation_basis = nrow(segmentation_fit$basis_weights),
         n_density_basis = nrow(density_fit$basis_points),
         n_threads = n_threads,
-        n_cell_types = ncol(segmentation_fit$cell_signatures)
+        n_cell_types = ncol(segmentation_fit$cell_signatures),
+        hard_max = identical(support_mode, "max_posterior")
     )
     colnames(support) = colnames(segmentation_fit$cell_signatures)
     support[, cell_types, drop = FALSE]
@@ -358,6 +399,10 @@ basin_cell_lookup <- function(basis_partition) {
 #'   materializing the full posterior matrix.
 #' @param min_posterior_support Minimum posterior-weighted transcript support
 #'   for a density-basis vertex to be an active watershed start for a cell type.
+#' @param support_mode Character; `"max_posterior"` first assigns each
+#'   transcript to its maximum-posterior cell type and contributes support only
+#'   to that type, while `"posterior"` uses soft posterior support for active
+#'   starts.
 #' @param distance_weight Non-negative penalty for long uphill ascent edges on
 #'   the basis graph.
 #' @param prior_outside Character; how to evaluate the spatial prior for
@@ -378,11 +423,13 @@ partition_basis_watershed_initial <- function(
     density_fit,
     posterior = NULL,
     min_posterior_support = 0,
+    support_mode = c("max_posterior", "posterior"),
     distance_weight = 0,
     prior_outside = c("nearest", "error"),
     n_threads = NULL,
     show_progress = TRUE
 ) {
+    support_mode = match.arg(support_mode)
     prior_outside = match.arg(prior_outside)
     if (is.null(density_fit$total_density_basis)) {
         stop("density_fit must contain total_density_basis.", call. = FALSE)
@@ -430,13 +477,18 @@ partition_basis_watershed_initial <- function(
     }
     if (is.null(posterior)) {
         if (show_progress) {
-            message("Computing posterior support on density basis...")
+            if (identical(support_mode, "max_posterior")) {
+                message("Computing max-posterior support on density basis...")
+            } else {
+                message("Computing posterior support on density basis...")
+            }
         }
         support = compute_basis_type_support_from_segmentation_fit(
             segmentation_fit = segmentation_fit,
             density_fit = density_fit,
             cell_types = cell_types,
-            n_threads = n_threads
+            n_threads = n_threads,
+            support_mode = support_mode
         )
     } else {
         posterior = normalize_posterior_matrix(posterior, nrow(density_fit$transcript_basis_id))
@@ -446,7 +498,12 @@ partition_basis_watershed_initial <- function(
         if (!identical(colnames(posterior), cell_types)) {
             posterior = posterior[, cell_types, drop = FALSE]
         }
-        support = compute_basis_type_support(
+        support_fun = if (identical(support_mode, "max_posterior")) {
+            compute_basis_type_support_max_posterior
+        } else {
+            compute_basis_type_support
+        }
+        support = support_fun(
             transcript_basis_id = density_fit$transcript_basis_id,
             transcript_basis_weight = density_fit$transcript_basis_weight,
             posterior = posterior,
@@ -514,6 +571,7 @@ partition_basis_watershed_initial <- function(
         basin_summary = summarize_active_basis_basins(basin, mode_basis, active_start, type_density, active_cell_types),
         parameters = list(
             min_posterior_support = min_posterior_support,
+            support_mode = support_mode,
             distance_weight = distance_weight,
             prior_outside = prior_outside,
             density_basis_subdivision = density_fit$parameters$basis_subdivision,

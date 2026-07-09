@@ -319,8 +319,8 @@ spatial_basis_posterior_counts_cpp <- function(par, basis_id, basis_weight, gene
     .Call(`_FastPotts_spatial_basis_posterior_counts_cpp`, par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types, min_posterior)
 }
 
-spatial_basis_density_support_cpp <- function(par, segmentation_basis_id, segmentation_basis_weight, gene_index, log_signature, density_basis_id, density_basis_weight, n_segmentation_basis, n_density_basis, n_threads, n_cell_types) {
-    .Call(`_FastPotts_spatial_basis_density_support_cpp`, par, segmentation_basis_id, segmentation_basis_weight, gene_index, log_signature, density_basis_id, density_basis_weight, n_segmentation_basis, n_density_basis, n_threads, n_cell_types)
+spatial_basis_density_support_cpp <- function(par, segmentation_basis_id, segmentation_basis_weight, gene_index, log_signature, density_basis_id, density_basis_weight, n_segmentation_basis, n_density_basis, n_threads, n_cell_types, hard_max) {
+    .Call(`_FastPotts_spatial_basis_density_support_cpp`, par, segmentation_basis_id, segmentation_basis_weight, gene_index, log_signature, density_basis_id, density_basis_weight, n_segmentation_basis, n_density_basis, n_threads, n_cell_types, hard_max)
 }
 
 #' @noRd

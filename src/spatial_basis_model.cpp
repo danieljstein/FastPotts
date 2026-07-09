@@ -619,7 +619,8 @@ NumericMatrix spatial_basis_density_support_cpp(
     const int n_segmentation_basis,
     const int n_density_basis,
     const int n_threads,
-    const int n_cell_types
+    const int n_cell_types,
+    const bool hard_max
 ) {
     const int n = segmentation_basis_id.nrow();
     const int n_active_segmentation = segmentation_basis_id.ncol();
@@ -711,7 +712,13 @@ NumericMatrix spatial_basis_density_support_cpp(
         }
 
         const double log_z_post = log_sum_exp(log_post);
+        int best_k = 0;
+        double best_log_post = log_post[0];
         for (int k = 0; k < n_cell_types; ++k) {
+            if (log_post[k] > best_log_post) {
+                best_log_post = log_post[k];
+                best_k = k;
+            }
             posterior[k] = std::exp(log_post[k] - log_z_post);
         }
 
@@ -725,8 +732,12 @@ NumericMatrix spatial_basis_density_support_cpp(
                 continue;
             }
 
-            for (int k = 0; k < n_cell_types; ++k) {
-                local_support[m + n_density_basis * k] += phi * posterior[k];
+            if (hard_max) {
+                local_support[m + n_density_basis * best_k] += phi;
+            } else {
+                for (int k = 0; k < n_cell_types; ++k) {
+                    local_support[m + n_density_basis * k] += phi * posterior[k];
+                }
             }
         }
     }
