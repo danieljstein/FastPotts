@@ -654,20 +654,33 @@ This is a good default for the current model because:
 
 `spatial_basis_segmentation()` returns:
 
-- `marginals`: posterior transcript probabilities `q[i, k]`
-- `spatial_prior`: fitted spatial priors `p[i, k]`
-- `logits`: interpolated transcript logits `f[i, k]`
+- `marginals`: posterior transcript probabilities `q[i, k]`, if requested with
+  `return_marginals = TRUE`
+- `spatial_prior`: fitted spatial priors `p[i, k]`, if requested with
+  `return_spatial_prior = TRUE`
+- `logits`: interpolated transcript logits `f[i, k]`, if requested with
+  `return_logits = TRUE`
+- `max_posterior`: the maximum posterior probability per transcript, if
+  requested with `return_max_posterior = TRUE`
 - `basis_weights`: fitted centered basis coefficients `w[k, m]`
 - `basis_points`: spatial coordinates of lattice basis points
 - `basis_lattice`: integer lattice coordinates
 - `basis_edges`: neighboring basis point graph with physical edge distances
 - `transcripts_df`: filtered transcript data with MAP labels
 - `optim`: the optimizer result
-- `optim_history`: optimizer results from each spatial field fit
+- `optim_history`: optimizer summaries from each spatial field fit by default;
+  set `optim_history = "full"` to keep complete `optim()` objects, including
+  repeated parameter vectors
 - `cell_signatures_initial`: input signatures after filtering and normalization
 - `cell_signatures`: final signatures used for the returned posterior
 - `signature_history`: signatures after each refinement step
 - `signature_update_history`: effective counts and max change per update
+
+The full `N x K` matrices `marginals`, `spatial_prior`, and `logits` are derived
+transcript-level outputs and are omitted by default to reduce peak RAM and saved
+object size. They can be reconstructed later with
+`predict_spatial_basis_segmentation()` from `basis_weights`, the fitted basis
+metadata, transcript coordinates/genes, and `cell_signatures`.
 
 ## Current Limitations
 

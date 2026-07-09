@@ -91,6 +91,10 @@ normalize_spatial_basis <- function(basis) {
     basis
 }
 
+`%||%` <- function(x, y) {
+    if (is.null(x)) y else x
+}
+
 update_signatures_from_posteriors <- function(
     gene_index,
     posterior,
@@ -132,6 +136,62 @@ update_signatures_from_posteriors <- function(
         max_abs_change = apply(abs(updated - current_signatures), 2, max),
         posterior_mean = posterior_mean
     )
+}
+
+update_signatures_from_counts <- function(
+    counts,
+    reference_signatures,
+    current_signatures,
+    prior_strength,
+    update_rate,
+    signature_floor
+) {
+    posterior_mean = sweep(
+        counts + prior_strength * reference_signatures,
+        2,
+        colSums(counts) + prior_strength,
+        "/"
+    )
+    updated = (1 - update_rate) * current_signatures + update_rate * posterior_mean
+    updated = pmax(updated, signature_floor)
+    updated = sweep(updated, 2, colSums(updated), "/")
+    dimnames(updated) = dimnames(reference_signatures)
+
+    list(
+        signatures = updated,
+        effective_counts = colSums(counts),
+        max_abs_change = apply(abs(updated - current_signatures), 2, max),
+        posterior_mean = posterior_mean
+    )
+}
+
+summarize_spatial_basis_optim <- function(opt) {
+    opt[c("value", "counts", "convergence", "message")]
+}
+
+check_spatial_basis_return_flag <- function(x, name) {
+    if (!is.logical(x) || length(x) != 1L || is.na(x)) {
+        stop(name, " must be TRUE or FALSE.", call. = FALSE)
+    }
+    x
+}
+
+remap_spatial_basis_design <- function(design, basis_lattice) {
+    fit_key = do.call(paste, c(as.data.frame(basis_lattice), sep = ":"))
+    query_key = do.call(paste, c(as.data.frame(design$basis_lattice), sep = ":"))
+    query_to_fit = match(query_key, fit_key)
+
+    if (anyNA(query_to_fit)) {
+        stop(
+            "Some prediction points require basis vertices that are absent from the fitted model. ",
+            "Check that basis, s, origin, and coordinates match the fitted domain.",
+            call. = FALSE
+        )
+    }
+
+    design$basis_id = matrix(query_to_fit[design$basis_id], nrow = nrow(design$basis_id))
+    design$basis_lattice = basis_lattice
+    design
 }
 
 warn_spatial_basis_optim_status <- function(opt, maxit) {
@@ -261,12 +321,29 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #' @param n_threads Integer number of OpenMP threads for objective/gradient and
 #'   prediction calculations. If `NULL`, uses the OpenMP runtime default.
 #' @param show_progress Logical; if `TRUE`, prints progress messages.
+#' @param return_marginals Logical; if `TRUE`, return the full transcript by
+#'   cell-type posterior matrix. Set to `FALSE` to avoid allocating and saving
+#'   this large derived output.
+#' @param return_spatial_prior Logical; if `TRUE`, return the full fitted
+#'   spatial prior matrix at transcript locations.
+#' @param return_logits Logical; if `TRUE`, return the full fitted spatial
+#'   logit matrix at transcript locations.
+#' @param return_max_posterior Logical; if `TRUE`, return each transcript's
+#'   maximum posterior probability as `max_posterior`.
+#' @param optim_history Character; `"summary"` stores per-fit optimizer
+#'   diagnostics without repeated parameter vectors, `"full"` stores complete
+#'   [stats::optim()] results, and `"none"` omits optimizer history.
 #'
 #' @return A list with components:
 #' \describe{
-#'   \item{marginals}{Matrix of posterior transcript probabilities.}
-#'   \item{spatial_prior}{Matrix of fitted spatial prior probabilities.}
-#'   \item{logits}{Matrix of fitted spatial logits at transcript locations.}
+#'   \item{marginals}{Matrix of posterior transcript probabilities, if
+#'     requested with `return_marginals = TRUE`.}
+#'   \item{spatial_prior}{Matrix of fitted spatial prior probabilities, if
+#'     requested with `return_spatial_prior = TRUE`.}
+#'   \item{logits}{Matrix of fitted spatial logits at transcript locations, if
+#'     requested with `return_logits = TRUE`.}
+#'   \item{max_posterior}{Maximum posterior probability per transcript, if
+#'     requested with `return_max_posterior = TRUE`.}
 #'   \item{basis_weights}{Matrix of fitted centered basis coefficients, one row
 #'     per lattice basis point and one column per cell type. Rows sum to zero.}
 #'   \item{basis_points}{Matrix of lattice basis point coordinates.}
@@ -275,7 +352,8 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #'     edge distances.}
 #'   \item{transcripts_df}{Filtered input data with added `label` column.}
 #'   \item{optim}{The [stats::optim()] result.}
-#'   \item{optim_history}{List of optimizer results, one per spatial field fit.}
+#'   \item{optim_history}{List of optimizer summaries by default, one per
+#'     spatial field fit.}
 #'   \item{cell_signatures_initial}{Input signatures after filtering,
 #'     flooring, and optional normalization.}
 #'   \item{cell_signatures}{Final signatures used for the returned posterior.}
@@ -327,13 +405,24 @@ spatial_basis_segmentation <- function(
     refinement_maxit = NULL,
     reltol = 1e-6,
     n_threads = NULL,
-    show_progress = TRUE
+    show_progress = TRUE,
+    return_marginals = FALSE,
+    return_spatial_prior = FALSE,
+    return_logits = FALSE,
+    return_max_posterior = FALSE,
+    optim_history = c("summary", "full", "none")
 ) {
     basis = normalize_spatial_basis(basis)
     lattice_basis = if (basis == "2d") "tri" else "bcc"
     regularization = match.arg(regularization)
     purity = match.arg(purity)
+    optim_history = match.arg(optim_history)
     d = if (basis == "2d") 2L else 3L
+
+    return_marginals = check_spatial_basis_return_flag(return_marginals, "return_marginals")
+    return_spatial_prior = check_spatial_basis_return_flag(return_spatial_prior, "return_spatial_prior")
+    return_logits = check_spatial_basis_return_flag(return_logits, "return_logits")
+    return_max_posterior = check_spatial_basis_return_flag(return_max_posterior, "return_max_posterior")
 
     if (length(lambda) != 1L || !is.finite(lambda) || lambda < 0) {
         stop("lambda must be a non-negative finite number.")
@@ -526,18 +615,7 @@ spatial_basis_segmentation <- function(
         )
         warn_spatial_basis_optim_status(opt, iter_maxit)
 
-        pred = spatial_basis_predict_cpp(
-            par = opt$par,
-            basis_id = basis_id0,
-            basis_weight = design$basis_weight,
-            gene_index = as.integer(gene_index - 1L),
-            log_signature = log_signature,
-            n_basis = M,
-            n_threads = n_threads,
-            n_cell_types = K
-        )
-
-        list(opt = opt, pred = pred)
+        opt
     }
 
     n_updates = if (isTRUE(refine_signatures)) signature_update_iters else 0L
@@ -545,29 +623,41 @@ spatial_basis_segmentation <- function(
     current_signatures = signatures
     par_start = par0
     signature_history = list(current_signatures)
-    optim_history = vector("list", n_fits)
+    optim_history_out = if (optim_history == "none") NULL else vector("list", n_fits)
     signature_update_history = vector("list", n_updates)
 
     for (fit_iter in seq_len(n_fits)) {
-        fit = fit_spatial_field(par_start, current_signatures, fit_iter)
-        opt = fit$opt
-        pred = fit$pred
-        optim_history[[fit_iter]] = opt
+        opt = fit_spatial_field(par_start, current_signatures, fit_iter)
+        if (optim_history == "full") {
+            optim_history_out[[fit_iter]] = opt
+        } else if (optim_history == "summary") {
+            optim_history_out[[fit_iter]] = summarize_spatial_basis_optim(opt)
+        }
 
         if (fit_iter <= n_updates) {
             if (show_progress) {
                 message("Updating cell type signatures...")
             }
-            update = update_signatures_from_posteriors(
-                gene_index = gene_index,
-                posterior = pred$posterior,
+            posterior_counts = spatial_basis_posterior_counts_cpp(
+                par = opt$par,
+                basis_id = basis_id0,
+                basis_weight = design$basis_weight,
+                gene_index = as.integer(gene_index - 1L),
+                log_signature = log(current_signatures),
+                n_basis = M,
+                n_threads = n_threads,
+                n_cell_types = K,
+                min_posterior = signature_min_posterior
+            )
+            update = update_signatures_from_counts(
+                counts = posterior_counts$counts,
                 reference_signatures = reference_signatures,
                 current_signatures = current_signatures,
                 prior_strength = signature_prior_strength,
                 update_rate = signature_update_rate,
-                min_posterior = signature_min_posterior,
                 signature_floor = signature_floor
             )
+            update$effective_counts = posterior_counts$effective_counts
             current_signatures = update$signatures
             signature_history[[fit_iter + 1L]] = current_signatures
             signature_update_history[[fit_iter]] = update[c("effective_counts", "max_abs_change")]
@@ -575,28 +665,46 @@ spatial_basis_segmentation <- function(
         }
     }
 
-    colnames(pred$posterior) = colnames(current_signatures)
-    colnames(pred$prior) = colnames(current_signatures)
-    colnames(pred$logits) = colnames(current_signatures)
+    pred = spatial_basis_predict_cpp(
+        par = opt$par,
+        basis_id = basis_id0,
+        basis_weight = design$basis_weight,
+        gene_index = as.integer(gene_index - 1L),
+        log_signature = log(current_signatures),
+        n_basis = M,
+        n_threads = n_threads,
+        n_cell_types = K,
+        return_prior = return_spatial_prior,
+        return_posterior = return_marginals,
+        return_logits = return_logits,
+        return_labels = TRUE,
+        return_max_posterior = return_max_posterior
+    )
+
+    if (!is.null(pred$posterior)) {
+        colnames(pred$posterior) = colnames(current_signatures)
+    }
+    if (!is.null(pred$prior)) {
+        colnames(pred$prior) = colnames(current_signatures)
+    }
+    if (!is.null(pred$logits)) {
+        colnames(pred$logits) = colnames(current_signatures)
+    }
 
     raw_basis_weights = matrix(opt$par, nrow = M, ncol = K)
     basis_weights = sweep(raw_basis_weights, 1L, rowMeans(raw_basis_weights), "-")
     colnames(basis_weights) = colnames(current_signatures)
 
-    labels = max.col(pred$posterior, ties.method = "first")
-    df$label = factor(colnames(current_signatures)[labels], levels = colnames(current_signatures))
+    df$label = factor(colnames(current_signatures)[pred$labels], levels = colnames(current_signatures))
 
-    list(
-        marginals = pred$posterior,
-        spatial_prior = pred$prior,
-        logits = pred$logits,
+    out = list(
         basis_weights = basis_weights,
         basis_points = design$basis_points,
         basis_lattice = design$basis_lattice,
         basis_edges = basis_edges,
         transcripts_df = df,
         optim = opt,
-        optim_history = optim_history,
+        optim_history = optim_history_out,
         cell_signatures_initial = reference_signatures,
         cell_signatures = current_signatures,
         signature_history = signature_history,
@@ -613,7 +721,165 @@ spatial_basis_segmentation <- function(
             purity_lambda = purity_lambda,
             maxit = maxit,
             refinement_maxit = refinement_maxit,
-            reltol = reltol
+            reltol = reltol,
+            x = x,
+            y = y,
+            z = z,
+            gene = gene,
+            qv = qv,
+            is_gene = is_gene,
+            qv_threshold = qv_threshold,
+            return_marginals = return_marginals,
+            return_spatial_prior = return_spatial_prior,
+            return_logits = return_logits,
+            return_max_posterior = return_max_posterior,
+            optim_history = optim_history
         )
     )
+
+    if (return_marginals) {
+        out$marginals = pred$posterior
+    }
+    if (return_spatial_prior) {
+        out$spatial_prior = pred$prior
+    }
+    if (return_logits) {
+        out$logits = pred$logits
+    }
+    if (return_max_posterior) {
+        out$max_posterior = pred$max_posterior
+    }
+
+    out
+}
+
+#' Reconstruct outputs from a spatial basis segmentation fit
+#'
+#' Computes derived transcript-level outputs from a fitted
+#' [spatial_basis_segmentation()] object. This is useful for compact fits where
+#' large matrices such as `marginals`, `spatial_prior`, or `logits` were not
+#' returned during fitting.
+#'
+#' @param fit Result from [spatial_basis_segmentation()].
+#' @param transcripts_df Transcript-level data frame. Defaults to
+#'   `fit$transcripts_df`.
+#' @param what Character vector of outputs to compute. Options are
+#'   `"marginals"`, `"spatial_prior"`, `"logits"`, `"labels"`, and
+#'   `"max_posterior"`.
+#' @param x Character; column name for x-coordinates. Defaults to the fit
+#'   parameter, or `"x_location"` for older fits.
+#' @param y Character; column name for y-coordinates. Defaults to the fit
+#'   parameter, or `"y_location"` for older fits.
+#' @param z Character; column name for z-coordinates. Defaults to the fit
+#'   parameter, or `"z_location"` for older fits.
+#' @param gene Character; column name for gene identifiers. Defaults to the fit
+#'   parameter, or `"feature_name"` for older fits.
+#' @param n_threads Integer number of OpenMP threads for prediction. If `NULL`,
+#'   uses the OpenMP runtime default.
+#'
+#' @return A list containing the requested outputs.
+#'
+#' @export
+predict_spatial_basis_segmentation <- function(
+    fit,
+    transcripts_df = fit$transcripts_df,
+    what = c("marginals", "spatial_prior", "logits", "labels", "max_posterior"),
+    x = fit$parameters$x %||% "x_location",
+    y = fit$parameters$y %||% "y_location",
+    z = fit$parameters$z %||% "z_location",
+    gene = fit$parameters$gene %||% "feature_name",
+    n_threads = NULL
+) {
+    what = match.arg(what, several.ok = TRUE)
+    basis = normalize_spatial_basis(fit$parameters$basis)
+    d = if (basis == "2d") 2L else 3L
+
+    if (is.null(fit$basis_weights) || is.null(fit$basis_lattice)) {
+        stop("fit must contain basis_weights and basis_lattice.", call. = FALSE)
+    }
+    if (is.null(fit$cell_signatures)) {
+        stop("fit must contain cell_signatures.", call. = FALSE)
+    }
+    if (is.null(transcripts_df)) {
+        stop("transcripts_df must be supplied when fit$transcripts_df is absent.", call. = FALSE)
+    }
+
+    coord_cols = if (basis == "2d") c(x, y) else c(x, y, z)
+    missing_cols = setdiff(c(coord_cols, gene), colnames(transcripts_df))
+    if (length(missing_cols) > 0L) {
+        stop("Missing required column(s): ", paste(missing_cols, collapse = ", "), call. = FALSE)
+    }
+
+    gene_index = match(transcripts_df[[gene]], rownames(fit$cell_signatures))
+    if (anyNA(gene_index)) {
+        stop("Some transcript genes are absent from fit$cell_signatures.", call. = FALSE)
+    }
+
+    if (is.null(n_threads)) {
+        n_threads = 0L
+    } else if (
+        length(n_threads) != 1L ||
+        !is.finite(n_threads) ||
+        n_threads < 1 ||
+        n_threads != as.integer(n_threads)
+    ) {
+        stop("n_threads must be NULL or a positive integer.", call. = FALSE)
+    } else {
+        n_threads = as.integer(n_threads)
+    }
+    basis_n_threads = if (n_threads == 0L) NULL else n_threads
+
+    coords = as.matrix(transcripts_df[, coord_cols, drop = FALSE])
+    storage.mode(coords) = "double"
+    bary = if (basis == "2d") {
+        tri_barycentric(coords, s = fit$parameters$s, origin = fit$parameters$origin, n_threads = basis_n_threads)
+    } else {
+        bcc_barycentric(coords, s = fit$parameters$s, origin = fit$parameters$origin, n_threads = basis_n_threads)
+    }
+    design = remap_spatial_basis_design(basis_design_from_barycentric(bary), fit$basis_lattice)
+
+    pred = spatial_basis_predict_cpp(
+        par = as.vector(as.matrix(fit$basis_weights)),
+        basis_id = design$basis_id - 1L,
+        basis_weight = design$basis_weight,
+        gene_index = as.integer(gene_index - 1L),
+        log_signature = log(fit$cell_signatures),
+        n_basis = nrow(fit$basis_weights),
+        n_threads = n_threads,
+        n_cell_types = ncol(fit$cell_signatures),
+        return_prior = "spatial_prior" %in% what,
+        return_posterior = "marginals" %in% what,
+        return_logits = "logits" %in% what,
+        return_labels = "labels" %in% what,
+        return_max_posterior = "max_posterior" %in% what
+    )
+
+    if (!is.null(pred$posterior)) {
+        colnames(pred$posterior) = colnames(fit$cell_signatures)
+    }
+    if (!is.null(pred$prior)) {
+        colnames(pred$prior) = colnames(fit$cell_signatures)
+    }
+    if (!is.null(pred$logits)) {
+        colnames(pred$logits) = colnames(fit$cell_signatures)
+    }
+
+    out = list()
+    if ("marginals" %in% what) {
+        out$marginals = pred$posterior
+    }
+    if ("spatial_prior" %in% what) {
+        out$spatial_prior = pred$prior
+    }
+    if ("logits" %in% what) {
+        out$logits = pred$logits
+    }
+    if ("labels" %in% what) {
+        out$labels = factor(colnames(fit$cell_signatures)[pred$labels], levels = colnames(fit$cell_signatures))
+    }
+    if ("max_posterior" %in% what) {
+        out$max_posterior = pred$max_posterior
+    }
+
+    out
 }

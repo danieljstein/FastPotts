@@ -167,8 +167,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // spatial_basis_predict_cpp
-List spatial_basis_predict_cpp(const NumericVector& par, const IntegerMatrix& basis_id, const NumericMatrix& basis_weight, const IntegerVector& gene_index, const NumericMatrix& log_signature, const int n_basis, const int n_threads, const int n_cell_types);
-RcppExport SEXP _FastPotts_spatial_basis_predict_cpp(SEXP parSEXP, SEXP basis_idSEXP, SEXP basis_weightSEXP, SEXP gene_indexSEXP, SEXP log_signatureSEXP, SEXP n_basisSEXP, SEXP n_threadsSEXP, SEXP n_cell_typesSEXP) {
+List spatial_basis_predict_cpp(const NumericVector& par, const IntegerMatrix& basis_id, const NumericMatrix& basis_weight, const IntegerVector& gene_index, const NumericMatrix& log_signature, const int n_basis, const int n_threads, const int n_cell_types, const bool return_prior, const bool return_posterior, const bool return_logits, const bool return_labels, const bool return_max_posterior);
+RcppExport SEXP _FastPotts_spatial_basis_predict_cpp(SEXP parSEXP, SEXP basis_idSEXP, SEXP basis_weightSEXP, SEXP gene_indexSEXP, SEXP log_signatureSEXP, SEXP n_basisSEXP, SEXP n_threadsSEXP, SEXP n_cell_typesSEXP, SEXP return_priorSEXP, SEXP return_posteriorSEXP, SEXP return_logitsSEXP, SEXP return_labelsSEXP, SEXP return_max_posteriorSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -180,7 +180,52 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const int >::type n_basis(n_basisSEXP);
     Rcpp::traits::input_parameter< const int >::type n_threads(n_threadsSEXP);
     Rcpp::traits::input_parameter< const int >::type n_cell_types(n_cell_typesSEXP);
-    rcpp_result_gen = Rcpp::wrap(spatial_basis_predict_cpp(par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types));
+    Rcpp::traits::input_parameter< const bool >::type return_prior(return_priorSEXP);
+    Rcpp::traits::input_parameter< const bool >::type return_posterior(return_posteriorSEXP);
+    Rcpp::traits::input_parameter< const bool >::type return_logits(return_logitsSEXP);
+    Rcpp::traits::input_parameter< const bool >::type return_labels(return_labelsSEXP);
+    Rcpp::traits::input_parameter< const bool >::type return_max_posterior(return_max_posteriorSEXP);
+    rcpp_result_gen = Rcpp::wrap(spatial_basis_predict_cpp(par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types, return_prior, return_posterior, return_logits, return_labels, return_max_posterior));
+    return rcpp_result_gen;
+END_RCPP
+}
+// spatial_basis_posterior_counts_cpp
+List spatial_basis_posterior_counts_cpp(const NumericVector& par, const IntegerMatrix& basis_id, const NumericMatrix& basis_weight, const IntegerVector& gene_index, const NumericMatrix& log_signature, const int n_basis, const int n_threads, const int n_cell_types, const double min_posterior);
+RcppExport SEXP _FastPotts_spatial_basis_posterior_counts_cpp(SEXP parSEXP, SEXP basis_idSEXP, SEXP basis_weightSEXP, SEXP gene_indexSEXP, SEXP log_signatureSEXP, SEXP n_basisSEXP, SEXP n_threadsSEXP, SEXP n_cell_typesSEXP, SEXP min_posteriorSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericVector& >::type par(parSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type basis_id(basis_idSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type basis_weight(basis_weightSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type gene_index(gene_indexSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type log_signature(log_signatureSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_basis(n_basisSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_threads(n_threadsSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_cell_types(n_cell_typesSEXP);
+    Rcpp::traits::input_parameter< const double >::type min_posterior(min_posteriorSEXP);
+    rcpp_result_gen = Rcpp::wrap(spatial_basis_posterior_counts_cpp(par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types, min_posterior));
+    return rcpp_result_gen;
+END_RCPP
+}
+// spatial_basis_density_support_cpp
+NumericMatrix spatial_basis_density_support_cpp(const NumericVector& par, const IntegerMatrix& segmentation_basis_id, const NumericMatrix& segmentation_basis_weight, const IntegerVector& gene_index, const NumericMatrix& log_signature, const IntegerMatrix& density_basis_id, const NumericMatrix& density_basis_weight, const int n_segmentation_basis, const int n_density_basis, const int n_threads, const int n_cell_types);
+RcppExport SEXP _FastPotts_spatial_basis_density_support_cpp(SEXP parSEXP, SEXP segmentation_basis_idSEXP, SEXP segmentation_basis_weightSEXP, SEXP gene_indexSEXP, SEXP log_signatureSEXP, SEXP density_basis_idSEXP, SEXP density_basis_weightSEXP, SEXP n_segmentation_basisSEXP, SEXP n_density_basisSEXP, SEXP n_threadsSEXP, SEXP n_cell_typesSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericVector& >::type par(parSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type segmentation_basis_id(segmentation_basis_idSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type segmentation_basis_weight(segmentation_basis_weightSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type gene_index(gene_indexSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type log_signature(log_signatureSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type density_basis_id(density_basis_idSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type density_basis_weight(density_basis_weightSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_segmentation_basis(n_segmentation_basisSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_density_basis(n_density_basisSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_threads(n_threadsSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_cell_types(n_cell_typesSEXP);
+    rcpp_result_gen = Rcpp::wrap(spatial_basis_density_support_cpp(par, segmentation_basis_id, segmentation_basis_weight, gene_index, log_signature, density_basis_id, density_basis_weight, n_segmentation_basis, n_density_basis, n_threads, n_cell_types));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -493,7 +538,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_potts_lbp_cpp", (DL_FUNC) &_FastPotts_potts_lbp_cpp, 9},
     {"_FastPotts_potts_lbp_parallel_cpp", (DL_FUNC) &_FastPotts_potts_lbp_parallel_cpp, 10},
     {"_FastPotts_spatial_basis_objective_cpp", (DL_FUNC) &_FastPotts_spatial_basis_objective_cpp, 17},
-    {"_FastPotts_spatial_basis_predict_cpp", (DL_FUNC) &_FastPotts_spatial_basis_predict_cpp, 8},
+    {"_FastPotts_spatial_basis_predict_cpp", (DL_FUNC) &_FastPotts_spatial_basis_predict_cpp, 13},
+    {"_FastPotts_spatial_basis_posterior_counts_cpp", (DL_FUNC) &_FastPotts_spatial_basis_posterior_counts_cpp, 9},
+    {"_FastPotts_spatial_basis_density_support_cpp", (DL_FUNC) &_FastPotts_spatial_basis_density_support_cpp, 11},
     {"_FastPotts_spatial_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_density_objective_cpp, 24},
     {"_FastPotts_spatial_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_density_predict_cpp, 11},
     {"_FastPotts_make_log_density_domain_simplex_cpp", (DL_FUNC) &_FastPotts_make_log_density_domain_simplex_cpp, 2},

@@ -311,8 +311,16 @@ spatial_basis_objective_cpp <- function(par, basis_id, basis_weight, gene_index,
     .Call(`_FastPotts_spatial_basis_objective_cpp`, par, basis_id, basis_weight, gene_index, log_signature, edge_from, edge_to, edge_distance, lambda, regularization, delta, sigma, purity, purity_lambda, n_threads, n_basis, n_cell_types)
 }
 
-spatial_basis_predict_cpp <- function(par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types) {
-    .Call(`_FastPotts_spatial_basis_predict_cpp`, par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types)
+spatial_basis_predict_cpp <- function(par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types, return_prior, return_posterior, return_logits, return_labels, return_max_posterior) {
+    .Call(`_FastPotts_spatial_basis_predict_cpp`, par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types, return_prior, return_posterior, return_logits, return_labels, return_max_posterior)
+}
+
+spatial_basis_posterior_counts_cpp <- function(par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types, min_posterior) {
+    .Call(`_FastPotts_spatial_basis_posterior_counts_cpp`, par, basis_id, basis_weight, gene_index, log_signature, n_basis, n_threads, n_cell_types, min_posterior)
+}
+
+spatial_basis_density_support_cpp <- function(par, segmentation_basis_id, segmentation_basis_weight, gene_index, log_signature, density_basis_id, density_basis_weight, n_segmentation_basis, n_density_basis, n_threads, n_cell_types) {
+    .Call(`_FastPotts_spatial_basis_density_support_cpp`, par, segmentation_basis_id, segmentation_basis_weight, gene_index, log_signature, density_basis_id, density_basis_weight, n_segmentation_basis, n_density_basis, n_threads, n_cell_types)
 }
 
 #' @noRd

@@ -351,7 +351,12 @@ List spatial_basis_predict_cpp(
     const NumericMatrix& log_signature,
     const int n_basis,
     const int n_threads,
-    const int n_cell_types
+    const int n_cell_types,
+    const bool return_prior,
+    const bool return_posterior,
+    const bool return_logits,
+    const bool return_labels,
+    const bool return_max_posterior
 ) {
     const int n = basis_id.nrow();
     const int n_active = basis_id.ncol();
@@ -377,9 +382,27 @@ List spatial_basis_predict_cpp(
         }
     }
 
-    NumericMatrix prior(n, n_cell_types);
-    NumericMatrix posterior(n, n_cell_types);
-    NumericMatrix logits(n, n_cell_types);
+    NumericMatrix prior;
+    NumericMatrix posterior;
+    NumericMatrix logits;
+    IntegerVector labels;
+    NumericVector max_posterior;
+
+    if (return_prior) {
+        prior = NumericMatrix(n, n_cell_types);
+    }
+    if (return_posterior) {
+        posterior = NumericMatrix(n, n_cell_types);
+    }
+    if (return_logits) {
+        logits = NumericMatrix(n, n_cell_types);
+    }
+    if (return_labels) {
+        labels = IntegerVector(n);
+    }
+    if (return_max_posterior) {
+        max_posterior = NumericVector(n);
+    }
 
     const int actual_threads = resolve_threads(n_threads);
     const std::vector<double> centered_weights = centered_basis_weights(
@@ -414,21 +437,310 @@ List spatial_basis_predict_cpp(
         const int g = gene_index[i];
 
         for (int k = 0; k < n_cell_types; ++k) {
-            logits(i, k) = f[k];
-            prior(i, k) = std::exp(f[k] - log_z_prior);
+            if (return_logits) {
+                logits(i, k) = f[k];
+            }
+            if (return_prior) {
+                prior(i, k) = std::exp(f[k] - log_z_prior);
+            }
+            log_post[k] = log_signature(g, k) + f[k];
+        }
+
+        const double log_z_post = log_sum_exp(log_post);
+        int best_k = 0;
+        double best_q = R_NegInf;
+
+        for (int k = 0; k < n_cell_types; ++k) {
+            const double q = std::exp(log_post[k] - log_z_post);
+            if (return_posterior) {
+                posterior(i, k) = q;
+            }
+            if (q > best_q) {
+                best_q = q;
+                best_k = k;
+            }
+        }
+
+        if (return_labels) {
+            labels[i] = best_k + 1;
+        }
+        if (return_max_posterior) {
+            max_posterior[i] = best_q;
+        }
+    }
+    }
+
+    List out;
+    if (return_prior) {
+        out["prior"] = prior;
+    }
+    if (return_posterior) {
+        out["posterior"] = posterior;
+    }
+    if (return_logits) {
+        out["logits"] = logits;
+    }
+    if (return_labels) {
+        out["labels"] = labels;
+    }
+    if (return_max_posterior) {
+        out["max_posterior"] = max_posterior;
+    }
+
+    return out;
+}
+
+// C++ backend for streamed signature refinement.
+// [[Rcpp::export]]
+List spatial_basis_posterior_counts_cpp(
+    const NumericVector& par,
+    const IntegerMatrix& basis_id,
+    const NumericMatrix& basis_weight,
+    const IntegerVector& gene_index,
+    const NumericMatrix& log_signature,
+    const int n_basis,
+    const int n_threads,
+    const int n_cell_types,
+    const double min_posterior
+) {
+    const int n = basis_id.nrow();
+    const int n_active = basis_id.ncol();
+    const int n_genes = log_signature.nrow();
+
+    if (par.size() != n_basis * n_cell_types) {
+        stop("par has incompatible length.");
+    }
+    if (n_threads < 0) {
+        stop("n_threads must be NULL or a positive integer.");
+    }
+    if (!R_finite(min_posterior) || min_posterior < 0.0 || min_posterior > 1.0) {
+        stop("min_posterior must be a finite number in [0, 1].");
+    }
+
+    for (int i = 0; i < n; ++i) {
+        const int g = gene_index[i];
+        if (g < 0 || g >= n_genes) {
+            stop("gene_index contains an out-of-range gene index.");
+        }
+
+        for (int a = 0; a < n_active; ++a) {
+            const int m = basis_id(i, a);
+            if (m < 0 || m >= n_basis) {
+                stop("basis_id contains an out-of-range basis index.");
+            }
+        }
+    }
+
+    const int actual_threads = resolve_threads(n_threads);
+    const std::vector<double> centered_weights = centered_basis_weights(
+        par,
+        n_basis,
+        n_cell_types
+    );
+    std::vector< std::vector<double> > counts_by_thread(
+        actual_threads,
+        std::vector<double>(n_genes * n_cell_types, 0.0)
+    );
+
+#ifdef _OPENMP
+#pragma omp parallel num_threads(actual_threads)
+#endif
+    {
+#ifdef _OPENMP
+        const int tid = omp_get_thread_num();
+#else
+        const int tid = 0;
+#endif
+        std::vector<double> f(n_cell_types);
+        std::vector<double> log_post(n_cell_types);
+        std::vector<double>& local_counts = counts_by_thread[tid];
+
+#ifdef _OPENMP
+#pragma omp for
+#endif
+    for (int i = 0; i < n; ++i) {
+        std::fill(f.begin(), f.end(), 0.0);
+
+        for (int a = 0; a < n_active; ++a) {
+            const int m = basis_id(i, a);
+            const double phi = basis_weight(i, a);
+
+            for (int k = 0; k < n_cell_types; ++k) {
+                f[k] += phi * centered_weights[m + n_basis * k];
+            }
+        }
+
+        const int g = gene_index[i];
+
+        for (int k = 0; k < n_cell_types; ++k) {
             log_post[k] = log_signature(g, k) + f[k];
         }
 
         const double log_z_post = log_sum_exp(log_post);
         for (int k = 0; k < n_cell_types; ++k) {
-            posterior(i, k) = std::exp(log_post[k] - log_z_post);
+            const double q = std::exp(log_post[k] - log_z_post);
+            if (q >= min_posterior) {
+                local_counts[g + n_genes * k] += q;
+            }
         }
     }
     }
 
+    NumericMatrix counts(n_genes, n_cell_types);
+    NumericVector effective_counts(n_cell_types);
+
+    for (int tid = 0; tid < actual_threads; ++tid) {
+        const std::vector<double>& local_counts = counts_by_thread[tid];
+        for (int k = 0; k < n_cell_types; ++k) {
+            for (int g = 0; g < n_genes; ++g) {
+                const double value = local_counts[g + n_genes * k];
+                counts(g, k) += value;
+                effective_counts[k] += value;
+            }
+        }
+    }
+
     return List::create(
-        _["prior"] = prior,
-        _["posterior"] = posterior,
-        _["logits"] = logits
+        _["counts"] = counts,
+        _["effective_counts"] = effective_counts
     );
+}
+
+// C++ backend for density-basis posterior support without storing marginals.
+// [[Rcpp::export]]
+NumericMatrix spatial_basis_density_support_cpp(
+    const NumericVector& par,
+    const IntegerMatrix& segmentation_basis_id,
+    const NumericMatrix& segmentation_basis_weight,
+    const IntegerVector& gene_index,
+    const NumericMatrix& log_signature,
+    const IntegerMatrix& density_basis_id,
+    const NumericMatrix& density_basis_weight,
+    const int n_segmentation_basis,
+    const int n_density_basis,
+    const int n_threads,
+    const int n_cell_types
+) {
+    const int n = segmentation_basis_id.nrow();
+    const int n_active_segmentation = segmentation_basis_id.ncol();
+    const int n_active_density = density_basis_id.ncol();
+
+    if (segmentation_basis_weight.nrow() != n || segmentation_basis_weight.ncol() != n_active_segmentation) {
+        stop("segmentation_basis_weight must have the same dimensions as segmentation_basis_id.");
+    }
+    if (density_basis_weight.nrow() != n || density_basis_weight.ncol() != n_active_density) {
+        stop("density_basis_weight must have the same dimensions as density_basis_id.");
+    }
+    if (gene_index.size() != n) {
+        stop("gene_index must have length nrow(segmentation_basis_id).");
+    }
+    if (log_signature.ncol() != n_cell_types) {
+        stop("log_signature must have n_cell_types columns.");
+    }
+    if (par.size() != n_segmentation_basis * n_cell_types) {
+        stop("par has incompatible length.");
+    }
+    if (n_threads < 0) {
+        stop("n_threads must be NULL or a positive integer.");
+    }
+
+    for (int i = 0; i < n; ++i) {
+        const int g = gene_index[i];
+        if (g < 0 || g >= log_signature.nrow()) {
+            stop("gene_index contains an out-of-range gene index.");
+        }
+
+        for (int a = 0; a < n_active_segmentation; ++a) {
+            const int m = segmentation_basis_id(i, a);
+            if (m < 0 || m >= n_segmentation_basis) {
+                stop("segmentation_basis_id contains an out-of-range basis index.");
+            }
+        }
+
+        for (int a = 0; a < n_active_density; ++a) {
+            const int m = density_basis_id(i, a);
+            if (m != NA_INTEGER && (m < 0 || m >= n_density_basis)) {
+                stop("density_basis_id contains an out-of-range basis index.");
+            }
+        }
+    }
+
+    const int actual_threads = resolve_threads(n_threads);
+    const std::vector<double> centered_weights = centered_basis_weights(
+        par,
+        n_segmentation_basis,
+        n_cell_types
+    );
+    std::vector< std::vector<double> > support_by_thread(
+        actual_threads,
+        std::vector<double>(n_density_basis * n_cell_types, 0.0)
+    );
+
+#ifdef _OPENMP
+#pragma omp parallel num_threads(actual_threads)
+#endif
+    {
+#ifdef _OPENMP
+        const int tid = omp_get_thread_num();
+#else
+        const int tid = 0;
+#endif
+        std::vector<double> f(n_cell_types);
+        std::vector<double> log_post(n_cell_types);
+        std::vector<double> posterior(n_cell_types);
+        std::vector<double>& local_support = support_by_thread[tid];
+
+#ifdef _OPENMP
+#pragma omp for
+#endif
+    for (int i = 0; i < n; ++i) {
+        std::fill(f.begin(), f.end(), 0.0);
+
+        for (int a = 0; a < n_active_segmentation; ++a) {
+            const int m = segmentation_basis_id(i, a);
+            const double phi = segmentation_basis_weight(i, a);
+
+            for (int k = 0; k < n_cell_types; ++k) {
+                f[k] += phi * centered_weights[m + n_segmentation_basis * k];
+            }
+        }
+
+        const int g = gene_index[i];
+        for (int k = 0; k < n_cell_types; ++k) {
+            log_post[k] = log_signature(g, k) + f[k];
+        }
+
+        const double log_z_post = log_sum_exp(log_post);
+        for (int k = 0; k < n_cell_types; ++k) {
+            posterior[k] = std::exp(log_post[k] - log_z_post);
+        }
+
+        for (int a = 0; a < n_active_density; ++a) {
+            const int m = density_basis_id(i, a);
+            if (m == NA_INTEGER) {
+                continue;
+            }
+            const double phi = density_basis_weight(i, a);
+            if (!R_finite(phi) || phi == 0.0) {
+                continue;
+            }
+
+            for (int k = 0; k < n_cell_types; ++k) {
+                local_support[m + n_density_basis * k] += phi * posterior[k];
+            }
+        }
+    }
+    }
+
+    NumericMatrix support(n_density_basis, n_cell_types);
+    for (int tid = 0; tid < actual_threads; ++tid) {
+        const std::vector<double>& local_support = support_by_thread[tid];
+        for (int k = 0; k < n_cell_types; ++k) {
+            for (int m = 0; m < n_density_basis; ++m) {
+                support(m, k) += local_support[m + n_density_basis * k];
+            }
+        }
+    }
+
+    return support;
 }

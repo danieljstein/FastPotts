@@ -7,7 +7,7 @@
 partition_basis_watershed_initial(
   segmentation_fit,
   density_fit,
-  posterior = segmentation_fit$marginals,
+  posterior = NULL,
   min_posterior_support = 0,
   distance_weight = 0,
   prior_outside = c("nearest", "error"),
@@ -21,7 +21,9 @@ partition_basis_watershed_initial(
 \item{density_fit}{Result from \code{\link[=spatial_basis_total_density_field]{spatial_basis_total_density_field()}}.}
 
 \item{posterior}{Optional transcript-by-cell-type posterior matrix. If
-\code{NULL}, uses \code{segmentation_fit$marginals}.}
+\code{NULL}, uses \code{segmentation_fit$marginals} when present; otherwise streams
+posterior support from compact \code{segmentation_fit} fields without
+materializing the full posterior matrix.}
 
 \item{min_posterior_support}{Minimum posterior-weighted transcript support
 for a density-basis vertex to be an active watershed start for a cell type.}

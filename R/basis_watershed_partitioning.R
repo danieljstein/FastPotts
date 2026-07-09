@@ -185,6 +185,92 @@ compute_basis_type_support <- function(transcript_basis_id, transcript_basis_wei
     support
 }
 
+compute_basis_type_support_from_segmentation_fit <- function(segmentation_fit, density_fit, cell_types, n_threads = NULL) {
+    if (is.null(segmentation_fit$transcripts_df)) {
+        stop(
+            "posterior is NULL and segmentation_fit does not contain transcripts_df; ",
+            "provide posterior explicitly or keep transcripts_df in the segmentation fit.",
+            call. = FALSE
+        )
+    }
+    if (is.null(segmentation_fit$basis_weights) || is.null(segmentation_fit$basis_lattice)) {
+        stop("segmentation_fit must contain basis_weights and basis_lattice.", call. = FALSE)
+    }
+    if (is.null(segmentation_fit$cell_signatures)) {
+        stop("segmentation_fit must contain cell_signatures.", call. = FALSE)
+    }
+
+    transcripts_df = segmentation_fit$transcripts_df
+    n = nrow(density_fit$transcript_basis_id)
+    if (nrow(transcripts_df) != n) {
+        stop(
+            "posterior is NULL and segmentation_fit$transcripts_df does not have one row per density-fit transcript; ",
+            "provide a posterior matrix explicitly.",
+            call. = FALSE
+        )
+    }
+
+    basis = normalize_spatial_basis(segmentation_fit$parameters$basis)
+    x = segmentation_fit$parameters$x %||% "x_location"
+    y = segmentation_fit$parameters$y %||% "y_location"
+    z = segmentation_fit$parameters$z %||% "z_location"
+    gene = segmentation_fit$parameters$gene %||% "feature_name"
+    coord_cols = if (basis == "2d") c(x, y) else c(x, y, z)
+    missing_cols = setdiff(c(coord_cols, gene), colnames(transcripts_df))
+    if (length(missing_cols) > 0L) {
+        stop("Missing required column(s) in segmentation_fit$transcripts_df: ", paste(missing_cols, collapse = ", "), call. = FALSE)
+    }
+
+    gene_index = match(transcripts_df[[gene]], rownames(segmentation_fit$cell_signatures))
+    if (anyNA(gene_index)) {
+        stop("Some transcript genes are absent from segmentation_fit$cell_signatures.", call. = FALSE)
+    }
+
+    if (is.null(n_threads)) {
+        n_threads = 0L
+    } else if (length(n_threads) != 1L || !is.finite(n_threads) || n_threads < 1) {
+        stop("n_threads must be NULL or a positive integer.", call. = FALSE)
+    } else {
+        n_threads = as.integer(n_threads)
+    }
+    basis_n_threads = if (n_threads == 0L) NULL else n_threads
+
+    coords = as.matrix(transcripts_df[, coord_cols, drop = FALSE])
+    storage.mode(coords) = "double"
+    bary = if (basis == "2d") {
+        tri_barycentric(
+            coords,
+            s = segmentation_fit$parameters$s,
+            origin = segmentation_fit$parameters$origin,
+            n_threads = basis_n_threads
+        )
+    } else {
+        bcc_barycentric(
+            coords,
+            s = segmentation_fit$parameters$s,
+            origin = segmentation_fit$parameters$origin,
+            n_threads = basis_n_threads
+        )
+    }
+    design = remap_spatial_basis_design(basis_design_from_barycentric(bary), segmentation_fit$basis_lattice)
+
+    support = spatial_basis_density_support_cpp(
+        par = as.vector(as.matrix(segmentation_fit$basis_weights)),
+        segmentation_basis_id = design$basis_id - 1L,
+        segmentation_basis_weight = design$basis_weight,
+        gene_index = as.integer(gene_index - 1L),
+        log_signature = log(segmentation_fit$cell_signatures),
+        density_basis_id = as.matrix(density_fit$transcript_basis_id) - 1L,
+        density_basis_weight = as.matrix(density_fit$transcript_basis_weight),
+        n_segmentation_basis = nrow(segmentation_fit$basis_weights),
+        n_density_basis = nrow(density_fit$basis_points),
+        n_threads = n_threads,
+        n_cell_types = ncol(segmentation_fit$cell_signatures)
+    )
+    colnames(support) = colnames(segmentation_fit$cell_signatures)
+    support[, cell_types, drop = FALSE]
+}
+
 summarize_active_basis_basins <- function(basin, mode_basis, active_start, type_density, cell_types) {
     out = vector("list", length(cell_types))
     for (k in seq_along(cell_types)) {
@@ -267,7 +353,9 @@ basin_cell_lookup <- function(basis_partition) {
 #' @param segmentation_fit Result from [spatial_basis_segmentation()].
 #' @param density_fit Result from [spatial_basis_total_density_field()].
 #' @param posterior Optional transcript-by-cell-type posterior matrix. If
-#'   `NULL`, uses `segmentation_fit$marginals`.
+#'   `NULL`, uses `segmentation_fit$marginals` when present; otherwise streams
+#'   posterior support from compact `segmentation_fit` fields without
+#'   materializing the full posterior matrix.
 #' @param min_posterior_support Minimum posterior-weighted transcript support
 #'   for a density-basis vertex to be an active watershed start for a cell type.
 #' @param distance_weight Non-negative penalty for long uphill ascent edges on
@@ -288,7 +376,7 @@ basin_cell_lookup <- function(basis_partition) {
 partition_basis_watershed_initial <- function(
     segmentation_fit,
     density_fit,
-    posterior = segmentation_fit$marginals,
+    posterior = NULL,
     min_posterior_support = 0,
     distance_weight = 0,
     prior_outside = c("nearest", "error"),
@@ -337,19 +425,34 @@ partition_basis_watershed_initial <- function(
         colnames(spatial_prior) = cell_types
     }
 
-    posterior = normalize_posterior_matrix(posterior, nrow(density_fit$transcript_basis_id))
-    if (is.null(colnames(posterior))) {
-        colnames(posterior) = cell_types
+    if (is.null(posterior) && !is.null(segmentation_fit$marginals)) {
+        posterior = segmentation_fit$marginals
     }
-    if (!identical(colnames(posterior), cell_types)) {
-        posterior = posterior[, cell_types, drop = FALSE]
+    if (is.null(posterior)) {
+        if (show_progress) {
+            message("Computing posterior support on density basis...")
+        }
+        support = compute_basis_type_support_from_segmentation_fit(
+            segmentation_fit = segmentation_fit,
+            density_fit = density_fit,
+            cell_types = cell_types,
+            n_threads = n_threads
+        )
+    } else {
+        posterior = normalize_posterior_matrix(posterior, nrow(density_fit$transcript_basis_id))
+        if (is.null(colnames(posterior))) {
+            colnames(posterior) = cell_types
+        }
+        if (!identical(colnames(posterior), cell_types)) {
+            posterior = posterior[, cell_types, drop = FALSE]
+        }
+        support = compute_basis_type_support(
+            transcript_basis_id = density_fit$transcript_basis_id,
+            transcript_basis_weight = density_fit$transcript_basis_weight,
+            posterior = posterior,
+            n_basis = nrow(basis_points)
+        )
     }
-    support = compute_basis_type_support(
-        transcript_basis_id = density_fit$transcript_basis_id,
-        transcript_basis_weight = density_fit$transcript_basis_weight,
-        posterior = posterior,
-        n_basis = nrow(basis_points)
-    )
     active_start_matrix = support > min_posterior_support
     active_cell_types = cell_types[colSums(active_start_matrix) > 0L]
     if (length(active_cell_types) == 0L) {

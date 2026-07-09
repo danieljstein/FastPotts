@@ -34,7 +34,12 @@ spatial_basis_segmentation(
   refinement_maxit = NULL,
   reltol = 1e-06,
   n_threads = NULL,
-  show_progress = TRUE
+  show_progress = TRUE,
+  return_marginals = FALSE,
+  return_spatial_prior = FALSE,
+  return_logits = FALSE,
+  return_max_posterior = FALSE,
+  optim_history = c("summary", "full", "none")
 )
 }
 \arguments{
@@ -135,13 +140,35 @@ uses \code{maxit}.}
 prediction calculations. If \code{NULL}, uses the OpenMP runtime default.}
 
 \item{show_progress}{Logical; if \code{TRUE}, prints progress messages.}
+
+\item{return_marginals}{Logical; if \code{TRUE}, return the full transcript by
+cell-type posterior matrix. Set to \code{FALSE} to avoid allocating and saving
+this large derived output.}
+
+\item{return_spatial_prior}{Logical; if \code{TRUE}, return the full fitted
+spatial prior matrix at transcript locations.}
+
+\item{return_logits}{Logical; if \code{TRUE}, return the full fitted spatial
+logit matrix at transcript locations.}
+
+\item{return_max_posterior}{Logical; if \code{TRUE}, return each transcript's
+maximum posterior probability as \code{max_posterior}.}
+
+\item{optim_history}{Character; \code{"summary"} stores per-fit optimizer
+diagnostics without repeated parameter vectors, \code{"full"} stores complete
+\code{\link[stats:optim]{stats::optim()}} results, and \code{"none"} omits optimizer history.}
 }
 \value{
 A list with components:
 \describe{
-\item{marginals}{Matrix of posterior transcript probabilities.}
-\item{spatial_prior}{Matrix of fitted spatial prior probabilities.}
-\item{logits}{Matrix of fitted spatial logits at transcript locations.}
+\item{marginals}{Matrix of posterior transcript probabilities, if
+requested with \code{return_marginals = TRUE}.}
+\item{spatial_prior}{Matrix of fitted spatial prior probabilities, if
+requested with \code{return_spatial_prior = TRUE}.}
+\item{logits}{Matrix of fitted spatial logits at transcript locations, if
+requested with \code{return_logits = TRUE}.}
+\item{max_posterior}{Maximum posterior probability per transcript, if
+requested with \code{return_max_posterior = TRUE}.}
 \item{basis_weights}{Matrix of fitted centered basis coefficients, one row
 per lattice basis point and one column per cell type. Rows sum to zero.}
 \item{basis_points}{Matrix of lattice basis point coordinates.}
@@ -150,7 +177,8 @@ per lattice basis point and one column per cell type. Rows sum to zero.}
 edge distances.}
 \item{transcripts_df}{Filtered input data with added \code{label} column.}
 \item{optim}{The \code{\link[stats:optim]{stats::optim()}} result.}
-\item{optim_history}{List of optimizer results, one per spatial field fit.}
+\item{optim_history}{List of optimizer summaries by default, one per
+spatial field fit.}
 \item{cell_signatures_initial}{Input signatures after filtering,
 flooring, and optional normalization.}
 \item{cell_signatures}{Final signatures used for the returned posterior.}
