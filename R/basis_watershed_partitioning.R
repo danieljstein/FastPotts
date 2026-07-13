@@ -588,7 +588,8 @@ partition_basis_watershed_initial <- function(
 #' partition should follow total transcript density rather than cell-type-
 #' specific density.
 #'
-#' @param density_fit Result from [spatial_basis_log_density_field()] or
+#' @param density_fit Result from [spatial_basis_log_density_field()],
+#'   `spatial_basis_linear_density_field()`, or
 #'   [spatial_basis_total_density_field()] containing `total_density_basis`,
 #'   `basis_points`, `basis_edges`, and transcript basis interpolation.
 #' @param distance_weight Non-negative penalty for long uphill ascent edges on

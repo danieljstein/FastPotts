@@ -12,7 +12,8 @@ partition_basis_watershed_total(
 )
 }
 \arguments{
-\item{density_fit}{Result from \code{\link[=spatial_basis_log_density_field]{spatial_basis_log_density_field()}} or
+\item{density_fit}{Result from \code{\link[=spatial_basis_log_density_field]{spatial_basis_log_density_field()}},
+\code{spatial_basis_linear_density_field()}, or
 \code{\link[=spatial_basis_total_density_field]{spatial_basis_total_density_field()}} containing \code{total_density_basis},
 \code{basis_points}, \code{basis_edges}, and transcript basis interpolation.}
 
