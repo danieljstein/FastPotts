@@ -441,6 +441,9 @@ spatial_basis_total_density_field <- function(
         basis_edges = build_lattice_neighbor_edges(basis_lattice_density, basis = lattice_basis, s = density_s)
     }
     lambda_laplacian_effective = lambda_laplacian / (density_s^4)
+    edge_from = as.integer(basis_edges[, "from"] - 1L)
+    edge_to = as.integer(basis_edges[, "to"] - 1L)
+    edge_distance = as.numeric(basis_edges[, "distance"])
 
     quadrature = list(
         coords = if (isTRUE(store_quadrature_coords)) parent_quadrature$coords else NULL,
@@ -472,9 +475,9 @@ spatial_basis_total_density_field <- function(
             quad_basis_id = quad_basis_id,
             quad_basis_weight = quad_basis_weight,
             quad_weight = quadrature$weight,
-            edge_from = as.integer(basis_edges[, "from"] - 1L),
-            edge_to = as.integer(basis_edges[, "to"] - 1L),
-            edge_distance = as.numeric(basis_edges[, "distance"]),
+            edge_from = edge_from,
+            edge_to = edge_to,
+            edge_distance = edge_distance,
             lambda = lambda,
             regularization = regularization_id,
             delta = delta,
@@ -487,13 +490,16 @@ spatial_basis_total_density_field <- function(
     if (show_progress) {
         message("Optimizing total log-density field...")
     }
+    cached = make_cached_spatial_basis_objective(objective)
     opt = stats::optim(
         par = par0,
-        fn = function(par) objective(par)$value,
-        gr = function(par) objective(par)$gradient,
+        fn = cached$fn,
+        gr = cached$gr,
         method = "L-BFGS-B",
         control = list(maxit = as.integer(maxit), factr = reltol / .Machine$double.eps)
     )
+    attr(opt, "objective_evaluations") = cached$n_eval()
+    attr(opt, "objective_cache_hits") = cached$n_hit()
     warn_spatial_basis_optim_status(opt, maxit)
 
     pred = spatial_log_density_predict_cpp(

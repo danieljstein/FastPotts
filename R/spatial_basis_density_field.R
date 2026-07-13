@@ -402,6 +402,9 @@ spatial_basis_density_field <- function(
     M = nrow(design$basis_lattice)
     E = nrow(active_edge$edge_pairs)
     K = ncol(fit_weight)
+    smooth_edge_from = as.integer(basis_edges[, "from"] - 1L)
+    smooth_edge_to = as.integer(basis_edges[, "to"] - 1L)
+    smooth_edge_distance = as.numeric(basis_edges[, "distance"])
     par0 = numeric((2L * M + E) * K)
     eta_offset = 0L
     s_offset = M * K
@@ -429,9 +432,9 @@ spatial_basis_density_field <- function(
             quad_weight = quadrature$weight,
             pair_from = active_edge$pair_from,
             pair_to = active_edge$pair_to,
-            smooth_edge_from = as.integer(basis_edges[, "from"] - 1L),
-            smooth_edge_to = as.integer(basis_edges[, "to"] - 1L),
-            smooth_edge_distance = as.numeric(basis_edges[, "distance"]),
+            smooth_edge_from = smooth_edge_from,
+            smooth_edge_to = smooth_edge_to,
+            smooth_edge_distance = smooth_edge_distance,
             density_floor = as.numeric(density_floor),
             lambda_eta = lambda_eta,
             lambda_s_smooth = lambda_s_smooth,
@@ -448,13 +451,16 @@ spatial_basis_density_field <- function(
     if (show_progress) {
         message("Optimizing spatial density field...")
     }
+    cached = make_cached_spatial_basis_objective(objective)
     opt = stats::optim(
         par = par0,
-        fn = function(par) objective(par)$value,
-        gr = function(par) objective(par)$gradient,
+        fn = cached$fn,
+        gr = cached$gr,
         method = "L-BFGS-B",
         control = list(maxit = as.integer(maxit), factr = reltol / .Machine$double.eps)
     )
+    attr(opt, "objective_evaluations") = cached$n_eval()
+    attr(opt, "objective_cache_hits") = cached$n_hit()
     warn_spatial_basis_optim_status(opt, maxit)
 
     pred = spatial_density_predict_cpp(

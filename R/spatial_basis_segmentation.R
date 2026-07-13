@@ -166,7 +166,42 @@ update_signatures_from_counts <- function(
 }
 
 summarize_spatial_basis_optim <- function(opt) {
-    opt[c("value", "counts", "convergence", "message")]
+    out = opt[c("value", "counts", "convergence", "message")]
+    objective_evaluations = attr(opt, "objective_evaluations", exact = TRUE)
+    objective_cache_hits = attr(opt, "objective_cache_hits", exact = TRUE)
+    if (!is.null(objective_evaluations)) {
+        out$objective_evaluations = objective_evaluations
+    }
+    if (!is.null(objective_cache_hits)) {
+        out$objective_cache_hits = objective_cache_hits
+    }
+    out
+}
+
+make_cached_spatial_basis_objective <- function(objective) {
+    force(objective)
+    last_par = NULL
+    last_result = NULL
+    n_eval = 0L
+    n_hit = 0L
+
+    eval_cached = function(par) {
+        if (is.null(last_par) || !identical(par, last_par)) {
+            last_par <<- par
+            last_result <<- objective(par)
+            n_eval <<- n_eval + 1L
+        } else {
+            n_hit <<- n_hit + 1L
+        }
+        last_result
+    }
+
+    list(
+        fn = function(par) eval_cached(par)$value,
+        gr = function(par) eval_cached(par)$gradient,
+        n_eval = function() n_eval,
+        n_hit = function() n_hit
+    )
 }
 
 check_spatial_basis_return_flag <- function(x, name) {
@@ -603,16 +638,19 @@ spatial_basis_segmentation <- function(
             message("Optimizing continuous spatial field", if (fit_iter > 1L) paste0(" (fit ", fit_iter, ")") else "", "...")
         }
         iter_maxit = if (fit_iter == 1L) maxit else refinement_maxit
+        cached = make_cached_spatial_basis_objective(objective)
         opt = stats::optim(
             par = par_start,
-            fn = function(par) objective(par)$value,
-            gr = function(par) objective(par)$gradient,
+            fn = cached$fn,
+            gr = cached$gr,
             method = "L-BFGS-B",
             control = list(
                 maxit = iter_maxit,
                 factr = reltol / .Machine$double.eps
             )
         )
+        attr(opt, "objective_evaluations") = cached$n_eval()
+        attr(opt, "objective_cache_hits") = cached$n_hit()
         warn_spatial_basis_optim_status(opt, iter_maxit)
 
         opt

@@ -163,6 +163,9 @@ spatial_basis_linear_density_field <- function(
     }
     basis_edges = build_lattice_neighbor_edges(basis_lattice, basis = lattice_basis, s = s)
     lambda_laplacian_effective = lambda_laplacian / (s^4)
+    edge_from = as.integer(basis_edges[, "from"] - 1L)
+    edge_to = as.integer(basis_edges[, "to"] - 1L)
+    edge_distance = as.numeric(basis_edges[, "distance"])
 
     obs_basis_id = design$basis_id - 1L
     obs_basis_weight = design$basis_weight
@@ -183,9 +186,9 @@ spatial_basis_linear_density_field <- function(
             obs_basis_weight = obs_basis_weight,
             simplex_basis_id = simplex_basis_id,
             simplex_volume = domain$volume,
-            edge_from = as.integer(basis_edges[, "from"] - 1L),
-            edge_to = as.integer(basis_edges[, "to"] - 1L),
-            edge_distance = as.numeric(basis_edges[, "distance"]),
+            edge_from = edge_from,
+            edge_to = edge_to,
+            edge_distance = edge_distance,
             lambda = lambda,
             regularization = regularization_id,
             delta = delta,
@@ -198,13 +201,16 @@ spatial_basis_linear_density_field <- function(
     if (show_progress) {
         message("Optimizing linear-density field...")
     }
+    cached = make_cached_spatial_basis_objective(objective)
     opt = stats::optim(
         par = par0,
-        fn = function(par) objective(par)$value,
-        gr = function(par) objective(par)$gradient,
+        fn = cached$fn,
+        gr = cached$gr,
         method = "L-BFGS-B",
         control = list(maxit = as.integer(maxit), factr = reltol / .Machine$double.eps)
     )
+    attr(opt, "objective_evaluations") = cached$n_eval()
+    attr(opt, "objective_cache_hits") = cached$n_hit()
     warn_spatial_basis_optim_status(opt, maxit)
 
     need_transcript_prediction = return_density || return_total_density || return_eta
