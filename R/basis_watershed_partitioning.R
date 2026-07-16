@@ -826,3 +826,376 @@ basis_watershed_gene_counts <- function(
         dimnames = list(gene_levels, cell_levels)
     )
 }
+
+basis_watershed_transcript_cells <- function(
+    basis_partition,
+    transcripts_df,
+    posterior = NULL,
+    mode = c("max_posterior", "weighted", "density")
+) {
+    mode = match.arg(mode)
+    if (is.null(basis_partition$transcript_basin) || is.null(basis_partition$basin_summary)) {
+        stop("basis_partition must contain transcript_basin and basin_summary.", call. = FALSE)
+    }
+    cell_types = colnames(basis_partition$transcript_basin)
+    n = nrow(basis_partition$transcript_basin)
+    if (nrow(transcripts_df) != n) {
+        stop("transcripts_df must have one row per transcript assignment.", call. = FALSE)
+    }
+    total_only = mode == "density" &&
+        length(cell_types) == 1L &&
+        isTRUE(basis_partition$parameters$mode == "total_density")
+
+    if (is.null(posterior) && mode %in% c("max_posterior", "weighted")) {
+        stop("posterior is required when mode = '", mode, "'. Use mode = 'density' to request the density-based fallback.", call. = FALSE)
+    }
+    if (!is.null(posterior)) {
+        posterior = as.matrix(posterior)
+        storage.mode(posterior) = "double"
+        if (nrow(posterior) != n) {
+            stop("posterior must have one row per transcript.", call. = FALSE)
+        }
+        if (ncol(posterior) < 1L) {
+            stop("posterior must have at least one column.", call. = FALSE)
+        }
+        if (any(!is.finite(posterior)) || any(posterior < 0)) {
+            stop("posterior must contain finite non-negative values.", call. = FALSE)
+        }
+        if (is.null(colnames(posterior))) {
+            stop("posterior must have column names matching cell types.", call. = FALSE)
+        }
+        if (mode == "weighted") {
+            row_total = rowSums(posterior)
+            if (any(row_total <= 0)) {
+                stop("Every posterior row must have positive mass.", call. = FALSE)
+            }
+            posterior = posterior / row_total
+        }
+    }
+
+    basin_lookup = basin_cell_lookup(basis_partition)
+    transcript_row = list()
+    cell_out = list()
+    weight_out = list()
+    posterior_out = list()
+    part_i = 0L
+
+    append_rows = function(rows, cell_type, weight) {
+        basin_id = basis_partition$transcript_basin[rows, cell_type]
+        cell_name = basin_lookup[[cell_type]][as.character(basin_id)]
+        keep = !is.na(cell_name)
+        if (!any(keep)) {
+            return(NULL)
+        }
+        rows = rows[keep]
+        cell_name = cell_name[keep]
+        weight = weight[keep]
+        cell_type_posterior = rep(NA_real_, length(rows))
+        if (!is.null(posterior) && cell_type %in% colnames(posterior)) {
+            cell_type_posterior = posterior[rows, cell_type]
+        }
+        part_i <<- part_i + 1L
+        transcript_row[[part_i]] <<- rows
+        cell_out[[part_i]] <<- unname(cell_name)
+        weight_out[[part_i]] <<- weight
+        posterior_out[[part_i]] <<- cell_type_posterior
+        NULL
+    }
+
+    if (mode == "weighted") {
+        for (cell_type in cell_types) {
+            if (!cell_type %in% colnames(posterior)) next
+            rows = which(!is.na(basis_partition$transcript_basin[, cell_type]) & posterior[, cell_type] > 0)
+            if (length(rows) == 0L) next
+            append_rows(rows, cell_type, posterior[rows, cell_type])
+        }
+    } else {
+        if (total_only) {
+            max_type = rep(cell_types, n)
+        } else if (mode == "max_posterior") {
+            max_type = colnames(posterior)[max.col(posterior, ties.method = "first")]
+        } else {
+            score = matrix(-Inf, nrow = n, ncol = length(cell_types), dimnames = list(NULL, cell_types))
+            for (cell_type in cell_types) {
+                mode_basis = basis_partition$transcript_mode_basis[, cell_type]
+                ok = !is.na(mode_basis)
+                score[ok, cell_type] = basis_partition$type_density_basis[[cell_type]][mode_basis[ok]]
+            }
+            max_type = colnames(score)[max.col(score, ties.method = "first")]
+        }
+        for (cell_type in cell_types) {
+            rows = which(max_type == cell_type & !is.na(basis_partition$transcript_basin[, cell_type]))
+            if (length(rows) == 0L) next
+            append_rows(rows, cell_type, rep(1, length(rows)))
+        }
+    }
+
+    if (part_i == 0L) {
+        return(data.frame(
+            transcript_row = integer(),
+            cell = character(),
+            assignment_weight = numeric(),
+            cell_type_posterior = numeric()
+        ))
+    }
+    data.frame(
+        transcript_row = unlist(transcript_row, use.names = FALSE),
+        cell = unlist(cell_out, use.names = FALSE),
+        assignment_weight = unlist(weight_out, use.names = FALSE),
+        cell_type_posterior = unlist(posterior_out, use.names = FALSE),
+        stringsAsFactors = FALSE
+    )
+}
+
+estimate_basis_watershed_cell_measure <- function(basis_partition, density_fit) {
+    if (is.null(density_fit) || is.null(density_fit$domain) || is.null(density_fit$domain$basis_id) || is.null(density_fit$domain$volume)) {
+        return(NULL)
+    }
+    if (is.null(density_fit$basis_points) || nrow(density_fit$basis_points) != nrow(basis_partition$basis_points)) {
+        stop("density_fit must use the same density basis as basis_partition to estimate cell area/volume.", call. = FALSE)
+    }
+    domain_basis_id = as.matrix(density_fit$domain$basis_id)
+    storage.mode(domain_basis_id) = "integer"
+    n_simplex = nrow(domain_basis_id)
+    simplex_volume = as.numeric(density_fit$domain$volume)
+    if (length(simplex_volume) == 1L) {
+        simplex_volume = rep(simplex_volume, n_simplex)
+    }
+    if (length(simplex_volume) != n_simplex) {
+        stop("density_fit$domain$volume must have length 1 or one value per simplex.", call. = FALSE)
+    }
+
+    basin_lookup = basin_cell_lookup(basis_partition)
+    simplex_type_weight = matrix(
+        0,
+        nrow = n_simplex,
+        ncol = length(basis_partition$active_cell_types),
+        dimnames = list(NULL, basis_partition$active_cell_types)
+    )
+    for (cell_type in basis_partition$active_cell_types) {
+        local_active = matrix(basis_partition$active_start[[cell_type]][domain_basis_id], nrow = n_simplex)
+        local_active[is.na(local_active)] = FALSE
+        simplex_type_weight[, cell_type] = rowMeans(local_active)
+    }
+    simplex_weight_total = rowSums(simplex_type_weight)
+    simplex_has_active_type = simplex_weight_total > 0
+    simplex_type_weight[simplex_has_active_type, ] =
+        simplex_type_weight[simplex_has_active_type, , drop = FALSE] / simplex_weight_total[simplex_has_active_type]
+
+    out = vector("list", length(basis_partition$active_cell_types))
+    names(out) = basis_partition$active_cell_types
+    for (cell_type in basis_partition$active_cell_types) {
+        local_basis_id = domain_basis_id
+        local_density = matrix(basis_partition$type_density_basis[[cell_type]][local_basis_id], nrow = n_simplex)
+        local_active = matrix(basis_partition$active_start[[cell_type]][local_basis_id], nrow = n_simplex)
+        local_active[is.na(local_active)] = FALSE
+        local_density[!local_active] = -Inf
+        has_active = rowSums(local_active) > 0L
+        if (!any(has_active)) {
+            out[[cell_type]] = NULL
+            next
+        }
+        best_active = max.col(local_density[has_active, , drop = FALSE], ties.method = "first")
+        mode_basis = domain_basis_id[has_active, , drop = FALSE][cbind(seq_len(sum(has_active)), best_active)]
+        basin_id = basis_partition$basin[[cell_type]][mode_basis]
+        cell_name = basin_lookup[[cell_type]][as.character(basin_id)]
+        keep = !is.na(cell_name)
+        if (!any(keep)) {
+            out[[cell_type]] = NULL
+            next
+        }
+        simplex_weight = simplex_type_weight[has_active, cell_type][keep]
+        measure = rowsum(simplex_volume[has_active][keep] * simplex_weight, cell_name[keep], reorder = FALSE)
+        n_domain_simplexes = tabulate(match(cell_name[keep], rownames(measure)), nbins = nrow(measure))
+        out[[cell_type]] = data.frame(
+            cell = rownames(measure),
+            n_domain_simplexes = n_domain_simplexes,
+            basis_measure = as.numeric(measure[, 1L]),
+            stringsAsFactors = FALSE
+        )
+    }
+    out = do.call(rbind, out)
+    if (is.null(out) || nrow(out) == 0L) {
+        return(NULL)
+    }
+    rownames(out) = NULL
+    d = ncol(basis_partition$basis_points)
+    out$basis_area = if (d == 2L) out$basis_measure else NA_real_
+    out$basis_volume = if (d == 3L) out$basis_measure else NA_real_
+    out
+}
+
+summarize_basis_watershed_domain_measure <- function(basis_partition, density_fit) {
+    na_out = data.frame(
+        n_domain_simplexes_total = NA_integer_,
+        domain_measure_total = NA_real_,
+        domain_area_total = NA_real_,
+        domain_volume_total = NA_real_,
+        n_active_domain_simplexes = NA_integer_,
+        active_domain_measure = NA_real_,
+        active_domain_area = NA_real_,
+        active_domain_volume = NA_real_
+    )
+    if (is.null(density_fit) || is.null(density_fit$domain) || is.null(density_fit$domain$basis_id) || is.null(density_fit$domain$volume)) {
+        return(na_out)
+    }
+    if (is.null(density_fit$basis_points) || nrow(density_fit$basis_points) != nrow(basis_partition$basis_points)) {
+        stop("density_fit must use the same density basis as basis_partition to estimate domain area/volume.", call. = FALSE)
+    }
+    domain_basis_id = as.matrix(density_fit$domain$basis_id)
+    storage.mode(domain_basis_id) = "integer"
+    n_simplex = nrow(domain_basis_id)
+    simplex_volume = as.numeric(density_fit$domain$volume)
+    if (length(simplex_volume) == 1L) {
+        simplex_volume = rep(simplex_volume, n_simplex)
+    }
+    if (length(simplex_volume) != n_simplex) {
+        stop("density_fit$domain$volume must have length 1 or one value per simplex.", call. = FALSE)
+    }
+
+    active_simplex = rep(FALSE, n_simplex)
+    for (cell_type in basis_partition$active_cell_types) {
+        local_active = matrix(basis_partition$active_start[[cell_type]][domain_basis_id], nrow = n_simplex)
+        local_active[is.na(local_active)] = FALSE
+        active_simplex = active_simplex | rowSums(local_active) > 0L
+    }
+
+    d = ncol(basis_partition$basis_points)
+    domain_measure_total = sum(simplex_volume)
+    active_domain_measure = sum(simplex_volume[active_simplex])
+    data.frame(
+        n_domain_simplexes_total = n_simplex,
+        domain_measure_total = domain_measure_total,
+        domain_area_total = if (d == 2L) domain_measure_total else NA_real_,
+        domain_volume_total = if (d == 3L) domain_measure_total else NA_real_,
+        n_active_domain_simplexes = sum(active_simplex),
+        active_domain_measure = active_domain_measure,
+        active_domain_area = if (d == 2L) active_domain_measure else NA_real_,
+        active_domain_volume = if (d == 3L) active_domain_measure else NA_real_
+    )
+}
+
+#' Collect basis-watershed gene counts with cell and transcript metadata
+#'
+#' Returns the sparse gene-by-cell count matrix together with transcript-level
+#' cell assignments and per-cell spatial metadata for plotting.
+#'
+#' @param basis_partition Result from [partition_basis_watershed_initial()] or
+#'   [partition_basis_watershed_total()].
+#' @param transcripts_df Transcript-level data frame corresponding to the
+#'   density and segmentation fits.
+#' @param posterior Optional transcript-by-cell-type posterior matrix. Required
+#'   for `mode = "max_posterior"` and `mode = "weighted"`.
+#' @param density_fit Optional density fit used to estimate basis-domain
+#'   area/volume for each cell. Each active density-domain simplex is split
+#'   fractionally across active cell types using the average active cell-type
+#'   support of its vertices; each type-specific fraction is then assigned to
+#'   that type's highest-density active basin for the simplex.
+#' @param gene Character gene column name.
+#' @param x,y,z Character coordinate column names.
+#' @param mode Character count/assignment mode passed to
+#'   [basis_watershed_gene_counts()].
+#'
+#' @return A list with `counts`, `cell_metadata`, `transcript_cells`, and
+#'   `domain_metadata`. `domain_metadata` contains the total density-domain
+#'   area/volume and the active-domain area/volume assigned across watershed
+#'   cells.
+#'   `transcript_cells` contains `transcript_row`, `cell`,
+#'   `assignment_weight`, `cell_type_posterior`, the gene column, and available
+#'   coordinate columns.
+#' @export
+basis_watershed_gene_count_data <- function(
+    basis_partition,
+    transcripts_df,
+    posterior = NULL,
+    density_fit = NULL,
+    gene = "feature_name",
+    x = "x_location",
+    y = "y_location",
+    z = "z_location",
+    mode = c("max_posterior", "weighted", "density")
+) {
+    mode = match.arg(mode)
+    counts = basis_watershed_gene_counts(
+        basis_partition = basis_partition,
+        transcripts_df = transcripts_df,
+        posterior = posterior,
+        gene = gene,
+        mode = mode
+    )
+    transcript_cells = basis_watershed_transcript_cells(
+        basis_partition = basis_partition,
+        transcripts_df = transcripts_df,
+        posterior = posterior,
+        mode = mode
+    )
+    coord_cols = c(x, y, z)
+    coord_cols = coord_cols[coord_cols %in% colnames(transcripts_df)]
+    if (length(coord_cols) == 0L) {
+        stop("No coordinate columns were found in transcripts_df.", call. = FALSE)
+    }
+    if (nrow(transcript_cells) > 0L) {
+        transcript_cells = cbind(
+            transcript_cells,
+            transcripts_df[transcript_cells$transcript_row, c(gene, coord_cols), drop = FALSE]
+        )
+    } else {
+        transcript_cells[[gene]] = character()
+        for (coord_col in coord_cols) {
+            transcript_cells[[coord_col]] = numeric()
+        }
+    }
+
+    summary = basis_partition$basin_summary
+    cell_metadata = summary[match(colnames(counts), as.character(summary$cell)), , drop = FALSE]
+    rownames(cell_metadata) = NULL
+    cell_metadata$cell = as.character(cell_metadata$cell)
+    cell_metadata$n_detected_genes = Matrix::colSums(counts > 0)
+    cell_metadata$count_sum = Matrix::colSums(counts)
+
+    if (nrow(transcript_cells) > 0L) {
+        assignment_n = rowsum(rep(1, nrow(transcript_cells)), transcript_cells$cell, reorder = FALSE)
+        weight_sum = rowsum(transcript_cells$assignment_weight, transcript_cells$cell, reorder = FALSE)
+        cell_metadata$n_transcript_assignments = as.integer(assignment_n[match(cell_metadata$cell, rownames(assignment_n)), 1L])
+        cell_metadata$n_transcript_assignments[is.na(cell_metadata$n_transcript_assignments)] = 0L
+        cell_metadata$assignment_weight_sum = as.numeric(weight_sum[match(cell_metadata$cell, rownames(weight_sum)), 1L])
+        cell_metadata$assignment_weight_sum[is.na(cell_metadata$assignment_weight_sum)] = 0
+        for (coord_col in coord_cols) {
+            weighted_coord = rowsum(
+                transcript_cells[[coord_col]] * transcript_cells$assignment_weight,
+                transcript_cells$cell,
+                reorder = FALSE
+            )
+            centroid = as.numeric(weighted_coord[match(cell_metadata$cell, rownames(weighted_coord)), 1L]) /
+                cell_metadata$assignment_weight_sum
+            centroid[!is.finite(centroid)] = NA_real_
+            cell_metadata[[paste0(coord_col, "_centroid")]] = centroid
+        }
+    } else {
+        cell_metadata$n_transcript_assignments = integer(nrow(cell_metadata))
+        cell_metadata$assignment_weight_sum = numeric(nrow(cell_metadata))
+        for (coord_col in coord_cols) {
+            cell_metadata[[paste0(coord_col, "_centroid")]] = NA_real_
+        }
+    }
+
+    measure = estimate_basis_watershed_cell_measure(basis_partition, density_fit)
+    domain_metadata = summarize_basis_watershed_domain_measure(basis_partition, density_fit)
+    if (!is.null(measure)) {
+        cell_metadata = merge(cell_metadata, measure, by = "cell", all.x = TRUE, sort = FALSE)
+        cell_metadata = cell_metadata[match(colnames(counts), cell_metadata$cell), , drop = FALSE]
+        rownames(cell_metadata) = NULL
+    } else {
+        cell_metadata$n_domain_simplexes = NA_integer_
+        cell_metadata$basis_measure = NA_real_
+        cell_metadata$basis_area = NA_real_
+        cell_metadata$basis_volume = NA_real_
+    }
+
+    list(
+        counts = counts,
+        cell_metadata = cell_metadata,
+        transcript_cells = transcript_cells,
+        domain_metadata = domain_metadata
+    )
+}
