@@ -469,6 +469,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// basis_watershed_domain_measure_cpp
+List basis_watershed_domain_measure_cpp(const IntegerMatrix& domain_basis_id, const NumericVector& simplex_volume, const List& active_start, const List& type_density, const List& basin);
+RcppExport SEXP _FastPotts_basis_watershed_domain_measure_cpp(SEXP domain_basis_idSEXP, SEXP simplex_volumeSEXP, SEXP active_startSEXP, SEXP type_densitySEXP, SEXP basinSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type domain_basis_id(domain_basis_idSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type simplex_volume(simplex_volumeSEXP);
+    Rcpp::traits::input_parameter< const List& >::type active_start(active_startSEXP);
+    Rcpp::traits::input_parameter< const List& >::type type_density(type_densitySEXP);
+    Rcpp::traits::input_parameter< const List& >::type basin(basinSEXP);
+    rcpp_result_gen = Rcpp::wrap(basis_watershed_domain_measure_cpp(domain_basis_id, simplex_volume, active_start, type_density, basin));
+    return rcpp_result_gen;
+END_RCPP
+}
 // estimate_graph_density_cpp
 NumericVector estimate_graph_density_cpp(const IntegerVector& from, const IntegerVector& to, const NumericVector& distance, const NumericMatrix& posterior, const double bandwidth, const int mode);
 RcppExport SEXP _FastPotts_estimate_graph_density_cpp(SEXP fromSEXP, SEXP toSEXP, SEXP distanceSEXP, SEXP posteriorSEXP, SEXP bandwidthSEXP, SEXP modeSEXP) {
@@ -592,6 +607,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_spatial_linear_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_linear_density_predict_cpp, 4},
     {"_FastPotts_compact_knn_edges_cpp", (DL_FUNC) &_FastPotts_compact_knn_edges_cpp, 5},
     {"_FastPotts_compact_undirected_edges_cpp", (DL_FUNC) &_FastPotts_compact_undirected_edges_cpp, 5},
+    {"_FastPotts_basis_watershed_domain_measure_cpp", (DL_FUNC) &_FastPotts_basis_watershed_domain_measure_cpp, 5},
     {"_FastPotts_estimate_graph_density_cpp", (DL_FUNC) &_FastPotts_estimate_graph_density_cpp, 6},
     {"_FastPotts_posterior_js_divergence_edges_cpp", (DL_FUNC) &_FastPotts_posterior_js_divergence_edges_cpp, 4},
     {"_FastPotts_density_ascent_partition_cpp", (DL_FUNC) &_FastPotts_density_ascent_partition_cpp, 7},

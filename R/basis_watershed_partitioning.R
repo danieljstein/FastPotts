@@ -947,85 +947,7 @@ basis_watershed_transcript_cells <- function(
     )
 }
 
-estimate_basis_watershed_cell_measure <- function(basis_partition, density_fit) {
-    if (is.null(density_fit) || is.null(density_fit$domain) || is.null(density_fit$domain$basis_id) || is.null(density_fit$domain$volume)) {
-        return(NULL)
-    }
-    if (is.null(density_fit$basis_points) || nrow(density_fit$basis_points) != nrow(basis_partition$basis_points)) {
-        stop("density_fit must use the same density basis as basis_partition to estimate cell area/volume.", call. = FALSE)
-    }
-    domain_basis_id = as.matrix(density_fit$domain$basis_id)
-    storage.mode(domain_basis_id) = "integer"
-    n_simplex = nrow(domain_basis_id)
-    simplex_volume = as.numeric(density_fit$domain$volume)
-    if (length(simplex_volume) == 1L) {
-        simplex_volume = rep(simplex_volume, n_simplex)
-    }
-    if (length(simplex_volume) != n_simplex) {
-        stop("density_fit$domain$volume must have length 1 or one value per simplex.", call. = FALSE)
-    }
-
-    basin_lookup = basin_cell_lookup(basis_partition)
-    simplex_type_weight = matrix(
-        0,
-        nrow = n_simplex,
-        ncol = length(basis_partition$active_cell_types),
-        dimnames = list(NULL, basis_partition$active_cell_types)
-    )
-    for (cell_type in basis_partition$active_cell_types) {
-        local_active = matrix(basis_partition$active_start[[cell_type]][domain_basis_id], nrow = n_simplex)
-        local_active[is.na(local_active)] = FALSE
-        simplex_type_weight[, cell_type] = rowMeans(local_active)
-    }
-    simplex_weight_total = rowSums(simplex_type_weight)
-    simplex_has_active_type = simplex_weight_total > 0
-    simplex_type_weight[simplex_has_active_type, ] =
-        simplex_type_weight[simplex_has_active_type, , drop = FALSE] / simplex_weight_total[simplex_has_active_type]
-
-    out = vector("list", length(basis_partition$active_cell_types))
-    names(out) = basis_partition$active_cell_types
-    for (cell_type in basis_partition$active_cell_types) {
-        local_basis_id = domain_basis_id
-        local_density = matrix(basis_partition$type_density_basis[[cell_type]][local_basis_id], nrow = n_simplex)
-        local_active = matrix(basis_partition$active_start[[cell_type]][local_basis_id], nrow = n_simplex)
-        local_active[is.na(local_active)] = FALSE
-        local_density[!local_active] = -Inf
-        has_active = rowSums(local_active) > 0L
-        if (!any(has_active)) {
-            out[[cell_type]] = NULL
-            next
-        }
-        best_active = max.col(local_density[has_active, , drop = FALSE], ties.method = "first")
-        mode_basis = domain_basis_id[has_active, , drop = FALSE][cbind(seq_len(sum(has_active)), best_active)]
-        basin_id = basis_partition$basin[[cell_type]][mode_basis]
-        cell_name = basin_lookup[[cell_type]][as.character(basin_id)]
-        keep = !is.na(cell_name)
-        if (!any(keep)) {
-            out[[cell_type]] = NULL
-            next
-        }
-        simplex_weight = simplex_type_weight[has_active, cell_type][keep]
-        measure = rowsum(simplex_volume[has_active][keep] * simplex_weight, cell_name[keep], reorder = FALSE)
-        n_domain_simplexes = tabulate(match(cell_name[keep], rownames(measure)), nbins = nrow(measure))
-        out[[cell_type]] = data.frame(
-            cell = rownames(measure),
-            n_domain_simplexes = n_domain_simplexes,
-            basis_measure = as.numeric(measure[, 1L]),
-            stringsAsFactors = FALSE
-        )
-    }
-    out = do.call(rbind, out)
-    if (is.null(out) || nrow(out) == 0L) {
-        return(NULL)
-    }
-    rownames(out) = NULL
-    d = ncol(basis_partition$basis_points)
-    out$basis_area = if (d == 2L) out$basis_measure else NA_real_
-    out$basis_volume = if (d == 3L) out$basis_measure else NA_real_
-    out
-}
-
-summarize_basis_watershed_domain_measure <- function(basis_partition, density_fit) {
+estimate_basis_watershed_domain_measure <- function(basis_partition, density_fit) {
     na_out = data.frame(
         n_domain_simplexes_total = NA_integer_,
         domain_measure_total = NA_real_,
@@ -1037,7 +959,7 @@ summarize_basis_watershed_domain_measure <- function(basis_partition, density_fi
         active_domain_volume = NA_real_
     )
     if (is.null(density_fit) || is.null(density_fit$domain) || is.null(density_fit$domain$basis_id) || is.null(density_fit$domain$volume)) {
-        return(na_out)
+        return(list(measure = NULL, domain_metadata = na_out))
     }
     if (is.null(density_fit$basis_points) || nrow(density_fit$basis_points) != nrow(basis_partition$basis_points)) {
         stop("density_fit must use the same density basis as basis_partition to estimate domain area/volume.", call. = FALSE)
@@ -1053,26 +975,57 @@ summarize_basis_watershed_domain_measure <- function(basis_partition, density_fi
         stop("density_fit$domain$volume must have length 1 or one value per simplex.", call. = FALSE)
     }
 
-    active_simplex = rep(FALSE, n_simplex)
-    for (cell_type in basis_partition$active_cell_types) {
-        local_active = matrix(basis_partition$active_start[[cell_type]][domain_basis_id], nrow = n_simplex)
-        local_active[is.na(local_active)] = FALSE
-        active_simplex = active_simplex | rowSums(local_active) > 0L
+    d = ncol(basis_partition$basis_points)
+    raw = basis_watershed_domain_measure_cpp(
+        domain_basis_id = domain_basis_id,
+        simplex_volume = simplex_volume,
+        active_start = basis_partition$active_start,
+        type_density = basis_partition$type_density_basis,
+        basin = basis_partition$basin
+    )
+
+    domain_metadata = raw$domain_metadata
+    domain_metadata$domain_area_total = if (d == 2L) domain_metadata$domain_measure_total else NA_real_
+    domain_metadata$domain_volume_total = if (d == 3L) domain_metadata$domain_measure_total else NA_real_
+    domain_metadata$active_domain_area = if (d == 2L) domain_metadata$active_domain_measure else NA_real_
+    domain_metadata$active_domain_volume = if (d == 3L) domain_metadata$active_domain_measure else NA_real_
+    domain_metadata = domain_metadata[, names(na_out), drop = FALSE]
+
+    measure = raw$measure
+    if (nrow(measure) > 0L) {
+        basin_key = paste(
+            basis_partition$basin_summary$cell_type,
+            basis_partition$basin_summary$basin,
+            sep = "\r"
+        )
+        cell_type = basis_partition$active_cell_types[measure$type_index]
+        cell_key = paste(cell_type, measure$basin, sep = "\r")
+        cell = as.character(basis_partition$basin_summary$cell)[match(cell_key, basin_key)]
+        keep = !is.na(cell)
+        measure = data.frame(
+            cell = cell[keep],
+            n_domain_simplexes = measure$n_domain_simplexes[keep],
+            basis_measure = measure$basis_measure[keep],
+            stringsAsFactors = FALSE
+        )
+        measure$basis_area = if (d == 2L) measure$basis_measure else NA_real_
+        measure$basis_volume = if (d == 3L) measure$basis_measure else NA_real_
+    } else {
+        measure = NULL
     }
 
-    d = ncol(basis_partition$basis_points)
-    domain_measure_total = sum(simplex_volume)
-    active_domain_measure = sum(simplex_volume[active_simplex])
-    data.frame(
-        n_domain_simplexes_total = n_simplex,
-        domain_measure_total = domain_measure_total,
-        domain_area_total = if (d == 2L) domain_measure_total else NA_real_,
-        domain_volume_total = if (d == 3L) domain_measure_total else NA_real_,
-        n_active_domain_simplexes = sum(active_simplex),
-        active_domain_measure = active_domain_measure,
-        active_domain_area = if (d == 2L) active_domain_measure else NA_real_,
-        active_domain_volume = if (d == 3L) active_domain_measure else NA_real_
+    list(
+        measure = measure,
+        domain_metadata = domain_metadata
     )
+}
+
+estimate_basis_watershed_cell_measure <- function(basis_partition, density_fit) {
+    estimate_basis_watershed_domain_measure(basis_partition, density_fit)$measure
+}
+
+summarize_basis_watershed_domain_measure <- function(basis_partition, density_fit) {
+    estimate_basis_watershed_domain_measure(basis_partition, density_fit)$domain_metadata
 }
 
 #' Collect basis-watershed gene counts with cell and transcript metadata
@@ -1179,8 +1132,9 @@ basis_watershed_gene_count_data <- function(
         }
     }
 
-    measure = estimate_basis_watershed_cell_measure(basis_partition, density_fit)
-    domain_metadata = summarize_basis_watershed_domain_measure(basis_partition, density_fit)
+    domain_measure = estimate_basis_watershed_domain_measure(basis_partition, density_fit)
+    measure = domain_measure$measure
+    domain_metadata = domain_measure$domain_metadata
     if (!is.null(measure)) {
         cell_metadata = merge(cell_metadata, measure, by = "cell", all.x = TRUE, sort = FALSE)
         cell_metadata = cell_metadata[match(colnames(counts), cell_metadata$cell), , drop = FALSE]

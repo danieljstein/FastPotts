@@ -406,6 +406,16 @@ compact_undirected_edges_cpp <- function(from, to, distance, n_nodes, max_distan
     .Call(`_FastPotts_compact_undirected_edges_cpp`, from, to, distance, n_nodes, max_distance)
 }
 
+#' Aggregate basis-watershed simplex area or volume by basin
+#'
+#' Internal C++ helper for `basis_watershed_gene_count_data()`.
+#'
+#' @keywords internal
+#' @noRd
+basis_watershed_domain_measure_cpp <- function(domain_basis_id, simplex_volume, active_start, type_density, basin) {
+    .Call(`_FastPotts_basis_watershed_domain_measure_cpp`, domain_basis_id, simplex_volume, active_start, type_density, basin)
+}
+
 #' Estimate graph transcript density
 #'
 #' Internal C++ helper for `partition_transcripts_watershed()`.

@@ -70,6 +70,22 @@ struct EdgeStats {
         from(from_), to(to_), distance(distance_) {}
 };
 
+static inline std::uint64_t type_basin_key(const int type0, const int basin0) {
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(type0)) << 32) |
+        static_cast<std::uint32_t>(basin0);
+}
+
+struct BasinMeasureStats {
+    int type;
+    int basin;
+    int n_simplex;
+    double measure;
+
+    BasinMeasureStats() : type(0), basin(0), n_simplex(0), measure(0.0) {}
+    BasinMeasureStats(const int type_, const int basin_) :
+        type(type_), basin(basin_), n_simplex(0), measure(0.0) {}
+};
+
 //' Compact directed KNN results into undirected graph edges
 //'
 //' Internal C++ helper for `partition_transcripts_watershed()`.
@@ -229,6 +245,157 @@ DataFrame compact_undirected_edges_cpp(
         _["from"] = out_from,
         _["to"] = out_to,
         _["distance"] = out_distance
+    );
+}
+
+//' Aggregate basis-watershed simplex area or volume by basin
+//'
+//' Internal C++ helper for `basis_watershed_gene_count_data()`.
+//'
+//' @keywords internal
+//' @noRd
+// [[Rcpp::export]]
+List basis_watershed_domain_measure_cpp(
+    const IntegerMatrix& domain_basis_id,
+    const NumericVector& simplex_volume,
+    const List& active_start,
+    const List& type_density,
+    const List& basin
+) {
+    const int n_simplex = domain_basis_id.nrow();
+    const int n_vertex = domain_basis_id.ncol();
+    const int K = active_start.size();
+    if (type_density.size() != K || basin.size() != K) {
+        stop("active_start, type_density, and basin must have the same length.");
+    }
+    if (simplex_volume.size() != 1 && simplex_volume.size() != n_simplex) {
+        stop("simplex_volume must have length 1 or one value per simplex.");
+    }
+
+    std::vector<LogicalVector> active(K);
+    std::vector<NumericVector> density(K);
+    std::vector<IntegerVector> basin_vec(K);
+    for (int k = 0; k < K; ++k) {
+        active[k] = as<LogicalVector>(active_start[k]);
+        density[k] = as<NumericVector>(type_density[k]);
+        basin_vec[k] = as<IntegerVector>(basin[k]);
+        if (density[k].size() != active[k].size() || basin_vec[k].size() != active[k].size()) {
+            stop("Each active_start, type_density, and basin vector must have the same length.");
+        }
+    }
+
+    std::unordered_map<std::uint64_t, BasinMeasureStats> stats;
+    stats.reserve(static_cast<std::size_t>(K) * 1024);
+    std::vector<int> active_count(K);
+    std::vector<int> best_basis0(K);
+    std::vector<double> best_density(K);
+
+    double domain_measure_total = 0.0;
+    double active_domain_measure = 0.0;
+    int n_active_domain_simplexes = 0;
+
+    for (int i = 0; i < n_simplex; ++i) {
+        const double vol = simplex_volume.size() == 1 ? simplex_volume[0] : simplex_volume[i];
+        if (!R_finite(vol)) {
+            stop("simplex_volume must contain finite values.");
+        }
+        domain_measure_total += vol;
+
+        int total_active_vertices = 0;
+        std::fill(active_count.begin(), active_count.end(), 0);
+        std::fill(best_basis0.begin(), best_basis0.end(), -1);
+        std::fill(best_density.begin(), best_density.end(), R_NegInf);
+
+        for (int v = 0; v < n_vertex; ++v) {
+            const int b0 = domain_basis_id(i, v) - 1;
+            if (b0 < 0) {
+                continue;
+            }
+            for (int k = 0; k < K; ++k) {
+                if (b0 >= active[k].size()) {
+                    stop("domain_basis_id contains a basis index outside active_start.");
+                }
+                const int is_active = active[k][b0];
+                if (is_active == TRUE) {
+                    active_count[k] += 1;
+                    total_active_vertices += 1;
+                    const double dens = density[k][b0];
+                    if (R_finite(dens) && dens > best_density[k]) {
+                        best_density[k] = dens;
+                        best_basis0[k] = b0;
+                    }
+                }
+            }
+        }
+
+        if (total_active_vertices == 0) {
+            continue;
+        }
+        n_active_domain_simplexes += 1;
+        active_domain_measure += vol;
+
+        for (int k = 0; k < K; ++k) {
+            if (active_count[k] == 0 || best_basis0[k] < 0) {
+                continue;
+            }
+            const int basin_id = basin_vec[k][best_basis0[k]];
+            if (basin_id == NA_INTEGER) {
+                continue;
+            }
+            const double weight = static_cast<double>(active_count[k]) /
+                static_cast<double>(total_active_vertices);
+            const std::uint64_t key = type_basin_key(k, basin_id - 1);
+            auto it = stats.find(key);
+            if (it == stats.end()) {
+                it = stats.emplace(key, BasinMeasureStats(k + 1, basin_id)).first;
+            }
+            it->second.n_simplex += 1;
+            it->second.measure += vol * weight;
+        }
+    }
+
+    std::vector<BasinMeasureStats> rows;
+    rows.reserve(stats.size());
+    for (const auto& kv : stats) {
+        rows.push_back(kv.second);
+    }
+    std::sort(
+        rows.begin(),
+        rows.end(),
+        [](const BasinMeasureStats& lhs, const BasinMeasureStats& rhs) {
+            if (lhs.type != rhs.type) return lhs.type < rhs.type;
+            return lhs.basin < rhs.basin;
+        }
+    );
+
+    const int n_row = rows.size();
+    IntegerVector type_index(n_row);
+    IntegerVector basin_id(n_row);
+    IntegerVector n_domain_simplexes(n_row);
+    NumericVector basis_measure(n_row);
+    for (int r = 0; r < n_row; ++r) {
+        type_index[r] = rows[r].type;
+        basin_id[r] = rows[r].basin;
+        n_domain_simplexes[r] = rows[r].n_simplex;
+        basis_measure[r] = rows[r].measure;
+    }
+
+    DataFrame measure = DataFrame::create(
+        _["type_index"] = type_index,
+        _["basin"] = basin_id,
+        _["n_domain_simplexes"] = n_domain_simplexes,
+        _["basis_measure"] = basis_measure
+    );
+    DataFrame domain_metadata = DataFrame::create(
+        _["n_domain_simplexes_total"] = n_simplex,
+        _["domain_measure_total"] = domain_measure_total,
+        _["n_active_domain_simplexes"] = n_active_domain_simplexes,
+        _["active_domain_measure"] = active_domain_measure
+    );
+
+    return List::create(
+        _["measure"] = measure,
+        _["domain_metadata"] = domain_metadata
     );
 }
 
