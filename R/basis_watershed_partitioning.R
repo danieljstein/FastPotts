@@ -1139,6 +1139,14 @@ basis_watershed_gene_count_data <- function(
         cell_metadata = merge(cell_metadata, measure, by = "cell", all.x = TRUE, sort = FALSE)
         cell_metadata = cell_metadata[match(colnames(counts), cell_metadata$cell), , drop = FALSE]
         rownames(cell_metadata) = NULL
+        no_measure = is.na(cell_metadata$basis_measure)
+        cell_metadata$n_domain_simplexes[is.na(cell_metadata$n_domain_simplexes)] = 0L
+        cell_metadata$basis_measure[no_measure] = 0
+        if (ncol(basis_partition$basis_points) == 2L) {
+            cell_metadata$basis_area[no_measure] = 0
+        } else if (ncol(basis_partition$basis_points) == 3L) {
+            cell_metadata$basis_volume[no_measure] = 0
+        }
     } else {
         cell_metadata$n_domain_simplexes = NA_integer_
         cell_metadata$basis_measure = NA_real_
