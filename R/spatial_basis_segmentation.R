@@ -91,6 +91,96 @@ normalize_spatial_basis <- function(basis) {
     basis
 }
 
+format_spatial_basis_count <- function(x) {
+    format(x, big.mark = ",", scientific = FALSE, trim = TRUE)
+}
+
+format_spatial_basis_bytes <- function(bytes) {
+    units = c("bytes", "KiB", "MiB", "GiB", "TiB")
+    value = as.numeric(bytes)
+    unit_id = 1L
+    while (is.finite(value) && abs(value) >= 1024 && unit_id < length(units)) {
+        value = value / 1024
+        unit_id = unit_id + 1L
+    }
+    paste0(format(round(value, 1), nsmall = 1, trim = TRUE), " ", units[unit_id])
+}
+
+spatial_basis_preflight_diagnostics <- function(n_transcripts, n_basis_vertices, n_cell_types) {
+    n_parameters = as.numeric(n_basis_vertices) * as.numeric(n_cell_types)
+    parameter_bytes = 8 * n_parameters
+    list(
+        n_transcripts = as.numeric(n_transcripts),
+        n_basis_vertices = as.numeric(n_basis_vertices),
+        n_cell_types = as.numeric(n_cell_types),
+        n_parameters = n_parameters,
+        parameter_bytes = parameter_bytes,
+        gradient_bytes = parameter_bytes,
+        optimizer = "L-BFGS-B",
+        optimizer_parameter_limit = as.numeric(.Machine$integer.max),
+        large_parameter_warning_threshold = 5e8
+    )
+}
+
+format_spatial_basis_preflight <- function(diagnostics) {
+    c(
+        "Spatial basis summary",
+        paste0("  Transcripts (N):    ", format_spatial_basis_count(diagnostics$n_transcripts)),
+        paste0("  Basis vertices (M): ", format_spatial_basis_count(diagnostics$n_basis_vertices)),
+        paste0("  Cell types (K):     ", format_spatial_basis_count(diagnostics$n_cell_types)),
+        paste0("  Parameters (M*K):   ", format_spatial_basis_count(diagnostics$n_parameters)),
+        "",
+        "Approximate optimizer vector sizes",
+        paste0("  Parameter vector:   ", format_spatial_basis_bytes(diagnostics$parameter_bytes)),
+        paste0("  Gradient vector:    ", format_spatial_basis_bytes(diagnostics$gradient_bytes)),
+        paste0("  Optimizer:          ", diagnostics$optimizer),
+        "  Note: L-BFGS-B uses multiple vectors of this size."
+    )
+}
+
+check_spatial_basis_preflight <- function(diagnostics) {
+    if (diagnostics$n_parameters > diagnostics$optimizer_parameter_limit) {
+        stop(
+            paste(
+                paste0(
+                    "The spatial basis produces ",
+                    format_spatial_basis_count(diagnostics$n_parameters),
+                    " optimization parameters, which exceeds the current optimizer limit (",
+                    format_spatial_basis_count(diagnostics$optimizer_parameter_limit),
+                    ")."
+                ),
+                "Possible solutions:",
+                "  * increase s",
+                "  * use basis = '2d'",
+                "  * tile the dataset",
+                "  * reduce the number of cell types",
+                sep = "\n"
+            ),
+            call. = FALSE
+        )
+    }
+    if (diagnostics$n_parameters > diagnostics$large_parameter_warning_threshold) {
+        warning(
+            paste(
+                paste0(
+                    "The spatial basis produces ",
+                    format_spatial_basis_count(diagnostics$n_parameters),
+                    " optimization parameters."
+                ),
+                paste0(
+                    "The parameter vector and gradient are each approximately ",
+                    format_spatial_basis_bytes(diagnostics$parameter_bytes),
+                    "; L-BFGS-B will allocate multiple vectors of this size."
+                ),
+                "Consider increasing s, using basis = '2d', tiling the dataset, or reducing the number of cell types.",
+                sep = "\n"
+            ),
+            call. = FALSE
+        )
+    }
+    invisible(diagnostics)
+}
+
 `%||%` <- function(x, y) {
     if (is.null(x)) y else x
 }
@@ -394,6 +484,8 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #'   \item{cell_signatures}{Final signatures used for the returned posterior.}
 #'   \item{signature_history}{List of signatures after each refinement step.}
 #'   \item{signature_update_history}{List of per-update diagnostics.}
+#'   \item{diagnostics}{Preflight size diagnostics for the spatial basis,
+#'     optimizer parameter vector, and gradient vector.}
 #'   \item{parameters}{Effective basis, optimization, and regularization
 #'     parameters used for the fit.}
 #' }
@@ -601,6 +693,15 @@ spatial_basis_segmentation <- function(
     if (K < 2L) {
         stop("cell_signatures must contain at least two cell types.")
     }
+    diagnostics = spatial_basis_preflight_diagnostics(
+        n_transcripts = nrow(df),
+        n_basis_vertices = M,
+        n_cell_types = K
+    )
+    if (show_progress) {
+        message(paste(format_spatial_basis_preflight(diagnostics), collapse = "\n"))
+    }
+    check_spatial_basis_preflight(diagnostics)
 
     par0 = numeric(M * K)
     basis_id0 = design$basis_id - 1L
@@ -747,6 +848,7 @@ spatial_basis_segmentation <- function(
         cell_signatures = current_signatures,
         signature_history = signature_history,
         signature_update_history = signature_update_history,
+        diagnostics = diagnostics,
         parameters = list(
             basis = basis,
             s = s,

@@ -184,6 +184,8 @@ flooring, and optional normalization.}
 \item{cell_signatures}{Final signatures used for the returned posterior.}
 \item{signature_history}{List of signatures after each refinement step.}
 \item{signature_update_history}{List of per-update diagnostics.}
+\item{diagnostics}{Preflight size diagnostics for the spatial basis,
+optimizer parameter vector, and gradient vector.}
 \item{parameters}{Effective basis, optimization, and regularization
 parameters used for the fit.}
 }
