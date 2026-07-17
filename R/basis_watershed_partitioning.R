@@ -342,6 +342,36 @@ make_basis_cell_names <- function(cell_type, basin, mode_basis) {
     out
 }
 
+validate_basis_watershed_edges <- function(basis_edges, n_basis) {
+    if (!all(c("from", "to", "distance") %in% colnames(basis_edges))) {
+        stop("density_fit$basis_edges must contain from, to, and distance columns.", call. = FALSE)
+    }
+    if (nrow(basis_edges) == 0L) {
+        stop("density_fit$basis_edges must contain at least one edge.", call. = FALSE)
+    }
+    edge_from = as.integer(basis_edges$from)
+    edge_to = as.integer(basis_edges$to)
+    edge_distance = as.numeric(basis_edges$distance)
+    bad_edge = is.na(edge_from) | is.na(edge_to) |
+        edge_from < 1L | edge_from > n_basis |
+        edge_to < 1L | edge_to > n_basis
+    if (any(bad_edge)) {
+        bad_i = which(bad_edge)[1L]
+        stop(
+            "density_fit$basis_edges contains an out-of-range edge endpoint at row ",
+            bad_i,
+            ". Endpoints must be in 1:nrow(density_fit$basis_points) = 1:",
+            n_basis,
+            ".",
+            call. = FALSE
+        )
+    }
+    if (any(!is.finite(edge_distance) | edge_distance <= 0)) {
+        stop("density_fit$basis_edges$distance must contain positive finite values.", call. = FALSE)
+    }
+    list(from = edge_from, to = edge_to, distance = edge_distance)
+}
+
 assign_transcripts_to_basis_basins <- function(transcript_basis_id, type_density, basin, active_start, cell_types) {
     transcript_basis_id = as.matrix(transcript_basis_id)
     storage.mode(transcript_basis_id) = "integer"
@@ -450,12 +480,7 @@ partition_basis_watershed_initial <- function(
         stop("density_fit$total_density_basis must contain one positive finite value per density basis point.", call. = FALSE)
     }
     basis_edges = as.data.frame(density_fit$basis_edges)
-    if (!all(c("from", "to", "distance") %in% colnames(basis_edges))) {
-        stop("density_fit$basis_edges must contain from, to, and distance columns.", call. = FALSE)
-    }
-    if (nrow(basis_edges) == 0L) {
-        stop("density_fit$basis_edges must contain at least one edge.", call. = FALSE)
-    }
+    checked_edges = validate_basis_watershed_edges(basis_edges, nrow(basis_points))
 
     if (show_progress) {
         message("Evaluating spatial prior on density basis...")
@@ -530,11 +555,14 @@ partition_basis_watershed_initial <- function(
         names(type_density) = names(active_start) = active_cell_types
     for (cell_type in active_cell_types) {
         type_density[[cell_type]] = total_density * spatial_prior[, cell_type]
+        if (any(!is.finite(type_density[[cell_type]]))) {
+            stop("Computed type density contains non-finite values for cell type '", cell_type, "'.", call. = FALSE)
+        }
         active_start[[cell_type]] = active_start_matrix[, cell_type]
         ascent = density_ascent_active_partition_cpp(
-            as.integer(basis_edges$from),
-            as.integer(basis_edges$to),
-            as.numeric(basis_edges$distance),
+            checked_edges$from,
+            checked_edges$to,
+            checked_edges$distance,
             type_density[[cell_type]],
             active_start[[cell_type]],
             distance_weight
@@ -629,12 +657,7 @@ partition_basis_watershed_total <- function(
         stop("density_fit$total_density_basis must contain one positive finite value per density basis point.", call. = FALSE)
     }
     basis_edges = as.data.frame(density_fit$basis_edges)
-    if (!all(c("from", "to", "distance") %in% colnames(basis_edges))) {
-        stop("density_fit$basis_edges must contain from, to, and distance columns.", call. = FALSE)
-    }
-    if (nrow(basis_edges) == 0L) {
-        stop("density_fit$basis_edges must contain at least one edge.", call. = FALSE)
-    }
+    checked_edges = validate_basis_watershed_edges(basis_edges, nrow(basis_points))
 
     if (show_progress) {
         message("Running basis watershed on total density...")
@@ -642,9 +665,9 @@ partition_basis_watershed_total <- function(
     n_basis = nrow(basis_points)
     active = rep(TRUE, n_basis)
     ascent = density_ascent_active_partition_cpp(
-        as.integer(basis_edges$from),
-        as.integer(basis_edges$to),
-        as.numeric(basis_edges$distance),
+        checked_edges$from,
+        checked_edges$to,
+        checked_edges$distance,
         total_density,
         active,
         distance_weight

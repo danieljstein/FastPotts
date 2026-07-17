@@ -507,6 +507,28 @@ List density_ascent_partition_cpp(
     if (to.size() != E || distance.size() != E || posterior_js.size() != E) {
         stop("from, to, distance, and posterior_js must have the same length.");
     }
+    if (!R_finite(distance_weight) || distance_weight < 0.0) {
+        stop("distance_weight must be a non-negative finite number.");
+    }
+    if (!R_finite(posterior_weight) || posterior_weight < 0.0) {
+        stop("posterior_weight must be a non-negative finite number.");
+    }
+    for (int i = 0; i < n; ++i) {
+        if (!R_finite(density[i])) {
+            stop("density must contain only finite values.");
+        }
+    }
+    for (R_xlen_t e = 0; e < E; ++e) {
+        if (from[e] == NA_INTEGER || to[e] == NA_INTEGER || from[e] < 1 || from[e] > n || to[e] < 1 || to[e] > n) {
+            stop("from and to must contain graph node indices in 1:length(density).");
+        }
+        if (!R_finite(distance[e]) || distance[e] <= 0.0) {
+            stop("distance must contain positive finite values.");
+        }
+        if (!R_finite(posterior_js[e]) || posterior_js[e] < 0.0) {
+            stop("posterior_js must contain non-negative finite values.");
+        }
+    }
 
     std::vector<int> parent(n);
     std::vector<double> best_score(n, -std::numeric_limits<double>::infinity());
@@ -585,6 +607,25 @@ List density_ascent_active_partition_cpp(
     }
     if (active_start.size() != n) {
         stop("active_start must have one value per graph node.");
+    }
+    if (!R_finite(distance_weight) || distance_weight < 0.0) {
+        stop("distance_weight must be a non-negative finite number.");
+    }
+    for (int i = 0; i < n; ++i) {
+        if (!R_finite(density[i])) {
+            stop("density must contain only finite values.");
+        }
+        if (active_start[i] == NA_LOGICAL) {
+            stop("active_start must not contain NA values.");
+        }
+    }
+    for (R_xlen_t e = 0; e < E; ++e) {
+        if (from[e] == NA_INTEGER || to[e] == NA_INTEGER || from[e] < 1 || from[e] > n || to[e] < 1 || to[e] > n) {
+            stop("from and to must contain graph node indices in 1:length(density).");
+        }
+        if (!R_finite(distance[e]) || distance[e] <= 0.0) {
+            stop("distance must contain positive finite values.");
+        }
     }
 
     std::vector<int> parent(n);
