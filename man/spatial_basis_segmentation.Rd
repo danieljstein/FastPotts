@@ -33,6 +33,7 @@ spatial_basis_segmentation(
   maxit = 100L,
   refinement_maxit = NULL,
   reltol = 1e-06,
+  lbfgsb_lmm = 5L,
   n_threads = NULL,
   show_progress = TRUE,
   return_marginals = FALSE,
@@ -135,6 +136,10 @@ uses \code{maxit}.}
 
 \item{reltol}{Approximate relative convergence tolerance. For the
 \code{"L-BFGS-B"} optimizer this is converted to \code{factr = reltol / .Machine$double.eps}.}
+
+\item{lbfgsb_lmm}{Integer number of L-BFGS-B correction pairs retained by
+\code{\link[stats:optim]{stats::optim()}}. Smaller values reduce optimizer workspace memory at the
+cost of less curvature history; the default \code{5} matches \code{stats::optim()}.}
 
 \item{n_threads}{Integer number of OpenMP threads for objective/gradient and
 prediction calculations. If \code{NULL}, uses the OpenMP runtime default.}

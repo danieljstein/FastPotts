@@ -106,9 +106,18 @@ format_spatial_basis_bytes <- function(bytes) {
     paste0(format(round(value, 1), nsmall = 1, trim = TRUE), " ", units[unit_id])
 }
 
-spatial_basis_preflight_diagnostics <- function(n_transcripts, n_basis_vertices, n_cell_types) {
+spatial_basis_preflight_diagnostics <- function(
+    n_transcripts,
+    n_basis_vertices,
+    n_cell_types,
+    lbfgsb_lmm = 5L
+) {
     n_parameters = as.numeric(n_basis_vertices) * as.numeric(n_cell_types)
     parameter_bytes = 8 * n_parameters
+    lbfgsb_history_size = as.numeric(lbfgsb_lmm)
+    lbfgsb_workspace_entries = n_parameters * (2 * lbfgsb_history_size + 5) +
+        11 * lbfgsb_history_size * lbfgsb_history_size +
+        8 * lbfgsb_history_size
     list(
         n_transcripts = as.numeric(n_transcripts),
         n_basis_vertices = as.numeric(n_basis_vertices),
@@ -117,7 +126,11 @@ spatial_basis_preflight_diagnostics <- function(n_transcripts, n_basis_vertices,
         parameter_bytes = parameter_bytes,
         gradient_bytes = parameter_bytes,
         optimizer = "L-BFGS-B",
+        lbfgsb_history_size = lbfgsb_history_size,
+        lbfgsb_workspace_entries = lbfgsb_workspace_entries,
+        lbfgsb_workspace_bytes = 8 * lbfgsb_workspace_entries,
         optimizer_parameter_limit = as.numeric(.Machine$integer.max),
+        optimizer_workspace_limit = as.numeric(.Machine$integer.max),
         large_parameter_warning_threshold = 5e8
     )
 }
@@ -134,6 +147,9 @@ format_spatial_basis_preflight <- function(diagnostics) {
         paste0("  Parameter vector:   ", format_spatial_basis_bytes(diagnostics$parameter_bytes)),
         paste0("  Gradient vector:    ", format_spatial_basis_bytes(diagnostics$gradient_bytes)),
         paste0("  Optimizer:          ", diagnostics$optimizer),
+        paste0("  L-BFGS-B lmm:       ", diagnostics$lbfgsb_history_size),
+        paste0("  L-BFGS-B workspace: ", format_spatial_basis_count(diagnostics$lbfgsb_workspace_entries), " doubles"),
+        paste0("                      ", format_spatial_basis_bytes(diagnostics$lbfgsb_workspace_bytes)),
         "  Note: L-BFGS-B uses multiple vectors of this size."
     )
 }
@@ -148,6 +164,35 @@ check_spatial_basis_preflight <- function(diagnostics) {
                     " optimization parameters, which exceeds the current optimizer limit (",
                     format_spatial_basis_count(diagnostics$optimizer_parameter_limit),
                     ")."
+                ),
+                "Possible solutions:",
+                "  * increase s",
+                "  * use basis = '2d'",
+                "  * tile the dataset",
+                "  * reduce the number of cell types",
+                sep = "\n"
+            ),
+            call. = FALSE
+        )
+    }
+    if (diagnostics$lbfgsb_workspace_entries > diagnostics$optimizer_workspace_limit) {
+        stop(
+            paste(
+                paste0(
+                    "The spatial basis produces ",
+                    format_spatial_basis_count(diagnostics$n_parameters),
+                    " optimization parameters. With the current L-BFGS-B history size (lmm = ",
+                    diagnostics$lbfgsb_history_size,
+                    "), stats::optim() needs ",
+                    format_spatial_basis_count(diagnostics$lbfgsb_workspace_entries),
+                    " workspace doubles, which exceeds the current optimizer workspace limit (",
+                    format_spatial_basis_count(diagnostics$optimizer_workspace_limit),
+                    ")."
+                ),
+                paste0(
+                    "The L-BFGS-B workspace alone would be approximately ",
+                    format_spatial_basis_bytes(diagnostics$lbfgsb_workspace_bytes),
+                    ", before the parameter vector, gradient, objective cache, and C++ thread-local gradients."
                 ),
                 "Possible solutions:",
                 "  * increase s",
@@ -443,6 +488,9 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #' @param reltol Approximate relative convergence tolerance. For the
 #'   `"L-BFGS-B"` optimizer this is converted to `factr = reltol /
 #'   .Machine$double.eps`.
+#' @param lbfgsb_lmm Integer number of L-BFGS-B correction pairs retained by
+#'   [stats::optim()]. Smaller values reduce optimizer workspace memory at the
+#'   cost of less curvature history; the default `5` matches `stats::optim()`.
 #' @param n_threads Integer number of OpenMP threads for objective/gradient and
 #'   prediction calculations. If `NULL`, uses the OpenMP runtime default.
 #' @param show_progress Logical; if `TRUE`, prints progress messages.
@@ -531,6 +579,7 @@ spatial_basis_segmentation <- function(
     maxit = 100L,
     refinement_maxit = NULL,
     reltol = 1e-6,
+    lbfgsb_lmm = 5L,
     n_threads = NULL,
     show_progress = TRUE,
     return_marginals = FALSE,
@@ -605,6 +654,15 @@ spatial_basis_segmentation <- function(
     } else {
         refinement_maxit = as.integer(refinement_maxit)
     }
+    if (
+        length(lbfgsb_lmm) != 1L ||
+        !is.finite(lbfgsb_lmm) ||
+        lbfgsb_lmm < 1 ||
+        lbfgsb_lmm != as.integer(lbfgsb_lmm)
+    ) {
+        stop("lbfgsb_lmm must be a positive integer.")
+    }
+    lbfgsb_lmm = as.integer(lbfgsb_lmm)
     if (is.null(n_threads)) {
         n_threads = 0L
     } else if (
@@ -696,7 +754,8 @@ spatial_basis_segmentation <- function(
     diagnostics = spatial_basis_preflight_diagnostics(
         n_transcripts = nrow(df),
         n_basis_vertices = M,
-        n_cell_types = K
+        n_cell_types = K,
+        lbfgsb_lmm = lbfgsb_lmm
     )
     if (show_progress) {
         message(paste(format_spatial_basis_preflight(diagnostics), collapse = "\n"))
@@ -747,7 +806,8 @@ spatial_basis_segmentation <- function(
             method = "L-BFGS-B",
             control = list(
                 maxit = iter_maxit,
-                factr = reltol / .Machine$double.eps
+                factr = reltol / .Machine$double.eps,
+                lmm = lbfgsb_lmm
             )
         )
         attr(opt, "objective_evaluations") = cached$n_eval()
@@ -862,6 +922,7 @@ spatial_basis_segmentation <- function(
             maxit = maxit,
             refinement_maxit = refinement_maxit,
             reltol = reltol,
+            lbfgsb_lmm = lbfgsb_lmm,
             x = x,
             y = y,
             z = z,
