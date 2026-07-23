@@ -8,6 +8,7 @@ partition_basis_watershed_initial(
   segmentation_fit,
   density_fit,
   posterior = NULL,
+  cell_type_groups = NULL,
   min_posterior_support = 0,
   support_mode = c("max_posterior", "posterior"),
   distance_weight = 0,
@@ -25,6 +26,12 @@ partition_basis_watershed_initial(
 \code{NULL}, uses \code{segmentation_fit$marginals} when present; otherwise streams
 posterior support from compact \code{segmentation_fit} fields without
 materializing the full posterior matrix.}
+
+\item{cell_type_groups}{Optional named list mapping coarse watershed cell
+type names to fine cell-signature names. Fine signatures not listed in any
+group are retained as singleton groups. Spatial priors and posteriors are
+summed within each group before active starts and max-posterior support are
+computed.}
 
 \item{min_posterior_support}{Minimum posterior-weighted transcript support
 for a density-basis vertex to be an active watershed start for a cell type.}

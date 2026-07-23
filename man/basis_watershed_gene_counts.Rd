@@ -9,7 +9,8 @@ basis_watershed_gene_counts(
   transcripts_df,
   posterior = NULL,
   gene = "feature_name",
-  mode = c("max_posterior", "weighted", "density")
+  mode = c("max_posterior", "weighted", "density"),
+  cell_type_groups = partition_cell_type_groups(basis_partition)
 )
 }
 \arguments{
@@ -28,6 +29,11 @@ maximum-posterior cell type, \code{"weighted"} contributes posterior weight to
 each active cell type with a valid transcript basin, and \code{"density"}
 explicitly uses the active cell type with the largest basis-watershed type
 density at each transcript's selected mode basis point.}
+
+\item{cell_type_groups}{Optional named list mapping coarse watershed cell
+type names to fine posterior column names. Defaults to the mapping stored
+in \code{basis_partition}, if present. Fine posterior columns are summed within
+groups before max-posterior or weighted assignment.}
 }
 \value{
 Sparse \code{dgCMatrix} with genes in rows and \code{celltype-modebasis}

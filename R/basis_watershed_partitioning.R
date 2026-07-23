@@ -5,6 +5,89 @@ softmax_rows <- function(x) {
     sweep(z, 1L, rowSums(z), "/")
 }
 
+normalize_cell_type_groups <- function(cell_type_groups, fine_cell_types) {
+    if (is.null(cell_type_groups)) {
+        out = as.list(fine_cell_types)
+        names(out) = fine_cell_types
+        return(out)
+    }
+    if (!is.list(cell_type_groups) || is.null(names(cell_type_groups)) || any(!nzchar(names(cell_type_groups)))) {
+        stop("cell_type_groups must be a named list of fine cell-type names.", call. = FALSE)
+    }
+    if (anyDuplicated(names(cell_type_groups))) {
+        stop("cell_type_groups names must be unique.", call. = FALSE)
+    }
+    out = lapply(cell_type_groups, as.character)
+    empty = vapply(out, length, integer(1L)) == 0L
+    if (any(empty)) {
+        stop("Every cell_type_groups entry must contain at least one fine cell type.", call. = FALSE)
+    }
+    members = unlist(out, use.names = FALSE)
+    missing = setdiff(members, fine_cell_types)
+    if (length(missing) > 0L) {
+        stop("cell_type_groups contains unknown fine cell type(s): ", paste(missing, collapse = ", "), call. = FALSE)
+    }
+    duplicate_members = unique(members[duplicated(members)])
+    if (length(duplicate_members) > 0L) {
+        stop("Fine cell type(s) appear in more than one cell_type_groups entry: ", paste(duplicate_members, collapse = ", "), call. = FALSE)
+    }
+    unmapped = setdiff(fine_cell_types, members)
+    if (length(unmapped) > 0L) {
+        singleton = as.list(unmapped)
+        names(singleton) = unmapped
+        out = c(out, singleton)
+    }
+    if (anyDuplicated(names(out))) {
+        stop("Coarse cell type names must be unique and must not duplicate unmapped fine cell type names.", call. = FALSE)
+    }
+    out
+}
+
+aggregate_matrix_by_cell_type_groups <- function(x, cell_type_groups) {
+    x = as.matrix(x)
+    if (is.null(colnames(x))) {
+        stop("Matrix to aggregate must have column names.", call. = FALSE)
+    }
+    out = matrix(0, nrow = nrow(x), ncol = length(cell_type_groups))
+    colnames(out) = names(cell_type_groups)
+    for (k in seq_along(cell_type_groups)) {
+        cols = cell_type_groups[[k]]
+        if (length(cols) == 1L) {
+            out[, k] = x[, cols]
+        } else {
+            out[, k] = rowSums(x[, cols, drop = FALSE])
+        }
+    }
+    out
+}
+
+prepare_grouped_posterior <- function(posterior, n, target_cell_types, cell_type_groups = NULL) {
+    posterior = normalize_posterior_matrix(posterior, n)
+    if (is.null(colnames(posterior))) {
+        if (is.null(cell_type_groups)) {
+            colnames(posterior) = target_cell_types
+        } else {
+            stop("posterior must have column names when cell type grouping is used.", call. = FALSE)
+        }
+    }
+    if (all(target_cell_types %in% colnames(posterior))) {
+        return(posterior[, target_cell_types, drop = FALSE])
+    }
+    if (!is.null(cell_type_groups)) {
+        groups = normalize_cell_type_groups(cell_type_groups, colnames(posterior))
+        posterior = aggregate_matrix_by_cell_type_groups(posterior, groups)
+    }
+    missing = setdiff(target_cell_types, colnames(posterior))
+    if (length(missing) > 0L) {
+        stop("posterior is missing required cell type(s): ", paste(missing, collapse = ", "), call. = FALSE)
+    }
+    posterior[, target_cell_types, drop = FALSE]
+}
+
+partition_cell_type_groups <- function(basis_partition) {
+    basis_partition$parameters$cell_type_groups %||% NULL
+}
+
 evaluate_spatial_prior_on_points <- function(
     segmentation_fit,
     coords,
@@ -427,6 +510,11 @@ basin_cell_lookup <- function(basis_partition) {
 #'   `NULL`, uses `segmentation_fit$marginals` when present; otherwise streams
 #'   posterior support from compact `segmentation_fit` fields without
 #'   materializing the full posterior matrix.
+#' @param cell_type_groups Optional named list mapping coarse watershed cell
+#'   type names to fine cell-signature names. Fine signatures not listed in any
+#'   group are retained as singleton groups. Spatial priors and posteriors are
+#'   summed within each group before active starts and max-posterior support are
+#'   computed.
 #' @param min_posterior_support Minimum posterior-weighted transcript support
 #'   for a density-basis vertex to be an active watershed start for a cell type.
 #' @param support_mode Character; `"max_posterior"` first assigns each
@@ -452,6 +540,7 @@ partition_basis_watershed_initial <- function(
     segmentation_fit,
     density_fit,
     posterior = NULL,
+    cell_type_groups = NULL,
     min_posterior_support = 0,
     support_mode = c("max_posterior", "posterior"),
     distance_weight = 0,
@@ -496,11 +585,24 @@ partition_basis_watershed_initial <- function(
         cell_types = paste0("type", seq_len(ncol(spatial_prior)))
         colnames(spatial_prior) = cell_types
     }
+    fine_cell_types = cell_types
+    group_list = normalize_cell_type_groups(cell_type_groups, fine_cell_types)
+    if (!is.null(cell_type_groups)) {
+        spatial_prior = aggregate_matrix_by_cell_type_groups(spatial_prior, group_list)
+        cell_types = colnames(spatial_prior)
+    }
 
     if (is.null(posterior) && !is.null(segmentation_fit$marginals)) {
         posterior = segmentation_fit$marginals
     }
     if (is.null(posterior)) {
+        if (!is.null(cell_type_groups) && identical(support_mode, "max_posterior")) {
+            stop(
+                "cell_type_groups with support_mode = 'max_posterior' requires a posterior matrix ",
+                "or segmentation_fit$marginals so fine posteriors can be summed before choosing the max coarse group.",
+                call. = FALSE
+            )
+        }
         if (show_progress) {
             if (identical(support_mode, "max_posterior")) {
                 message("Computing max-posterior support on density basis...")
@@ -511,18 +613,20 @@ partition_basis_watershed_initial <- function(
         support = compute_basis_type_support_from_segmentation_fit(
             segmentation_fit = segmentation_fit,
             density_fit = density_fit,
-            cell_types = cell_types,
+            cell_types = fine_cell_types,
             n_threads = n_threads,
             support_mode = support_mode
         )
+        if (!is.null(cell_type_groups)) {
+            support = aggregate_matrix_by_cell_type_groups(support, group_list)
+        }
     } else {
-        posterior = normalize_posterior_matrix(posterior, nrow(density_fit$transcript_basis_id))
-        if (is.null(colnames(posterior))) {
-            colnames(posterior) = cell_types
-        }
-        if (!identical(colnames(posterior), cell_types)) {
-            posterior = posterior[, cell_types, drop = FALSE]
-        }
+        posterior = prepare_grouped_posterior(
+            posterior = posterior,
+            n = nrow(density_fit$transcript_basis_id),
+            target_cell_types = cell_types,
+            cell_type_groups = cell_type_groups
+        )
         support_fun = if (identical(support_mode, "max_posterior")) {
             compute_basis_type_support_max_posterior
         } else {
@@ -602,6 +706,8 @@ partition_basis_watershed_initial <- function(
             support_mode = support_mode,
             distance_weight = distance_weight,
             prior_outside = prior_outside,
+            cell_type_groups = if (is.null(cell_type_groups)) NULL else group_list,
+            fine_cell_types = fine_cell_types,
             density_basis_subdivision = density_fit$parameters$basis_subdivision,
             density_quadrature_subdivision = density_fit$parameters$quadrature_subdivision
         )
@@ -732,6 +838,10 @@ partition_basis_watershed_total <- function(
 #'   each active cell type with a valid transcript basin, and `"density"`
 #'   explicitly uses the active cell type with the largest basis-watershed type
 #'   density at each transcript's selected mode basis point.
+#' @param cell_type_groups Optional named list mapping coarse watershed cell
+#'   type names to fine posterior column names. Defaults to the mapping stored
+#'   in `basis_partition`, if present. Fine posterior columns are summed within
+#'   groups before max-posterior or weighted assignment.
 #'
 #' @return Sparse `dgCMatrix` with genes in rows and `celltype-modebasis`
 #'   initial watershed cells in columns.
@@ -741,7 +851,8 @@ basis_watershed_gene_counts <- function(
     transcripts_df,
     posterior = NULL,
     gene = "feature_name",
-    mode = c("max_posterior", "weighted", "density")
+    mode = c("max_posterior", "weighted", "density"),
+    cell_type_groups = partition_cell_type_groups(basis_partition)
 ) {
     mode = match.arg(mode)
     if (!gene %in% colnames(transcripts_df)) {
@@ -761,26 +872,13 @@ basis_watershed_gene_counts <- function(
     if (is.null(posterior) && mode %in% c("max_posterior", "weighted")) {
         stop("posterior is required when mode = '", mode, "'. Use mode = 'density' to request the density-based fallback.", call. = FALSE)
     }
-    if (!is.null(posterior) && mode == "weighted") {
-        posterior = normalize_posterior_matrix(posterior, n)
-        if (is.null(colnames(posterior))) {
-            stop("posterior must have column names matching cell types.", call. = FALSE)
-        }
-    } else if (!is.null(posterior) && mode == "max_posterior") {
-        posterior = as.matrix(posterior)
-        storage.mode(posterior) = "double"
-        if (nrow(posterior) != n) {
-            stop("posterior must have one row per transcript.", call. = FALSE)
-        }
-        if (ncol(posterior) < 1L) {
-            stop("posterior must have at least one column.", call. = FALSE)
-        }
-        if (any(!is.finite(posterior)) || any(posterior < 0)) {
-            stop("posterior must contain finite non-negative values.", call. = FALSE)
-        }
-        if (is.null(colnames(posterior))) {
-            stop("posterior must have column names matching cell types.", call. = FALSE)
-        }
+    if (!is.null(posterior) && mode %in% c("weighted", "max_posterior")) {
+        posterior = prepare_grouped_posterior(
+            posterior = posterior,
+            n = n,
+            target_cell_types = cell_types,
+            cell_type_groups = cell_type_groups
+        )
     }
 
     gene_values = as.character(transcripts_df[[gene]])
@@ -854,7 +952,8 @@ basis_watershed_transcript_cells <- function(
     basis_partition,
     transcripts_df,
     posterior = NULL,
-    mode = c("max_posterior", "weighted", "density")
+    mode = c("max_posterior", "weighted", "density"),
+    cell_type_groups = partition_cell_type_groups(basis_partition)
 ) {
     mode = match.arg(mode)
     if (is.null(basis_partition$transcript_basin) || is.null(basis_partition$basin_summary)) {
@@ -873,27 +972,12 @@ basis_watershed_transcript_cells <- function(
         stop("posterior is required when mode = '", mode, "'. Use mode = 'density' to request the density-based fallback.", call. = FALSE)
     }
     if (!is.null(posterior)) {
-        posterior = as.matrix(posterior)
-        storage.mode(posterior) = "double"
-        if (nrow(posterior) != n) {
-            stop("posterior must have one row per transcript.", call. = FALSE)
-        }
-        if (ncol(posterior) < 1L) {
-            stop("posterior must have at least one column.", call. = FALSE)
-        }
-        if (any(!is.finite(posterior)) || any(posterior < 0)) {
-            stop("posterior must contain finite non-negative values.", call. = FALSE)
-        }
-        if (is.null(colnames(posterior))) {
-            stop("posterior must have column names matching cell types.", call. = FALSE)
-        }
-        if (mode == "weighted") {
-            row_total = rowSums(posterior)
-            if (any(row_total <= 0)) {
-                stop("Every posterior row must have positive mass.", call. = FALSE)
-            }
-            posterior = posterior / row_total
-        }
+        posterior = prepare_grouped_posterior(
+            posterior = posterior,
+            n = n,
+            target_cell_types = cell_types,
+            cell_type_groups = cell_type_groups
+        )
     }
 
     basin_lookup = basin_cell_lookup(basis_partition)
@@ -1071,6 +1155,9 @@ summarize_basis_watershed_domain_measure <- function(basis_partition, density_fi
 #' @param x,y,z Character coordinate column names.
 #' @param mode Character count/assignment mode passed to
 #'   [basis_watershed_gene_counts()].
+#' @param cell_type_groups Optional named list mapping coarse watershed cell
+#'   type names to fine posterior column names. Defaults to the mapping stored
+#'   in `basis_partition`, if present.
 #'
 #' @return A list with `counts`, `cell_metadata`, `transcript_cells`, and
 #'   `domain_metadata`. `domain_metadata` contains the total density-domain
@@ -1089,7 +1176,8 @@ basis_watershed_gene_count_data <- function(
     x = "x_location",
     y = "y_location",
     z = "z_location",
-    mode = c("max_posterior", "weighted", "density")
+    mode = c("max_posterior", "weighted", "density"),
+    cell_type_groups = partition_cell_type_groups(basis_partition)
 ) {
     mode = match.arg(mode)
     counts = basis_watershed_gene_counts(
@@ -1097,13 +1185,15 @@ basis_watershed_gene_count_data <- function(
         transcripts_df = transcripts_df,
         posterior = posterior,
         gene = gene,
-        mode = mode
+        mode = mode,
+        cell_type_groups = cell_type_groups
     )
     transcript_cells = basis_watershed_transcript_cells(
         basis_partition = basis_partition,
         transcripts_df = transcripts_df,
         posterior = posterior,
-        mode = mode
+        mode = mode,
+        cell_type_groups = cell_type_groups
     )
     coord_cols = c(x, y, z)
     coord_cols = coord_cols[coord_cols %in% colnames(transcripts_df)]

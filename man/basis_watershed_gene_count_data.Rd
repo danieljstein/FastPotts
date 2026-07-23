@@ -13,7 +13,8 @@ basis_watershed_gene_count_data(
   x = "x_location",
   y = "y_location",
   z = "z_location",
-  mode = c("max_posterior", "weighted", "density")
+  mode = c("max_posterior", "weighted", "density"),
+  cell_type_groups = partition_cell_type_groups(basis_partition)
 )
 }
 \arguments{
@@ -38,6 +39,10 @@ that type's highest-density active basin for the simplex.}
 
 \item{mode}{Character count/assignment mode passed to
 \code{\link[=basis_watershed_gene_counts]{basis_watershed_gene_counts()}}.}
+
+\item{cell_type_groups}{Optional named list mapping coarse watershed cell
+type names to fine posterior column names. Defaults to the mapping stored
+in \code{basis_partition}, if present.}
 }
 \value{
 A list with \code{counts}, \code{cell_metadata}, \code{transcript_cells}, and
