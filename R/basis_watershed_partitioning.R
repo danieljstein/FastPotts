@@ -215,6 +215,146 @@ evaluate_spatial_prior_on_points <- function(
     prior
 }
 
+#' Basis-level spatial overlap between segmentation signatures
+#'
+#' Computes pairwise overlap between cell-signature spatial prior fields from a
+#' fitted [spatial_basis_segmentation()] object. When `density_fit` is supplied,
+#' overlap is evaluated on the density basis and weighted by
+#' `density_fit$total_density_basis`; otherwise it is evaluated on the
+#' segmentation basis with uniform basis-point weights.
+#'
+#' This diagnostic is intended as a cheap pre-partition screen for fine
+#' signatures that occupy the same spatial support and may be better grouped
+#' into a coarser cell type before basis watershed partitioning.
+#'
+#' @param segmentation_fit Result from [spatial_basis_segmentation()].
+#' @param density_fit Optional result from [spatial_basis_total_density_field()]
+#'   or a compatible object containing `basis_points` and `total_density_basis`.
+#' @param cell_type_groups Optional named list mapping coarse cell type names to
+#'   fine cell-signature names. Fine signatures not listed in any group are
+#'   retained as singleton groups before overlap is computed.
+#' @param cell_types Optional character vector of cell types to include after
+#'   grouping. Defaults to all available cell types.
+#' @param prior_outside Character; how to evaluate the spatial prior for
+#'   density-basis vertices whose parent-basis interpolation would require
+#'   parent vertices outside `segmentation_fit$basis_lattice`. `"nearest"` uses
+#'   the nearest parent basis vertex logits; `"error"` stops.
+#' @param n_threads Integer number of OpenMP threads for prior interpolation.
+#'   If `NULL`, uses runtime default.
+#'
+#' @return A data frame with one row per cell-type pair. `shared_mass` is the
+#'   density-weighted sum of the pointwise minimum of the two spatial priors.
+#'   `overlap_coef` is `shared_mass / min(mass_a, mass_b)`, so values near 1
+#'   mean most of the smaller signature's spatial mass is co-localized with the
+#'   other signature. `jaccard` is `shared_mass / (mass_a + mass_b -
+#'   shared_mass)`, `cosine` is a weighted cosine similarity between prior
+#'   fields, and `frac_a_shared` / `frac_b_shared` are directional shared-mass
+#'   fractions.
+#' @export
+spatial_basis_signature_overlap <- function(
+    segmentation_fit,
+    density_fit = NULL,
+    cell_type_groups = NULL,
+    cell_types = NULL,
+    prior_outside = c("nearest", "error"),
+    n_threads = NULL
+) {
+    prior_outside = match.arg(prior_outside)
+    if (is.null(segmentation_fit$basis_weights) || is.null(segmentation_fit$basis_points)) {
+        stop("segmentation_fit must contain basis_weights and basis_points.", call. = FALSE)
+    }
+
+    if (is.null(density_fit)) {
+        coords = as.matrix(segmentation_fit$basis_points)
+        weights = rep(1, nrow(coords))
+        basis_source = "segmentation"
+    } else {
+        if (is.null(density_fit$basis_points) || is.null(density_fit$total_density_basis)) {
+            stop("density_fit must contain basis_points and total_density_basis.", call. = FALSE)
+        }
+        coords = as.matrix(density_fit$basis_points)
+        weights = as.numeric(density_fit$total_density_basis)
+        basis_source = "density"
+    }
+    storage.mode(coords) = "double"
+    if (any(!is.finite(coords))) {
+        stop("basis points must contain only finite coordinates.", call. = FALSE)
+    }
+    if (
+        length(weights) != nrow(coords) ||
+        any(!is.finite(weights)) ||
+        any(weights < 0) ||
+        sum(weights) <= 0
+    ) {
+        stop("basis weights must contain one non-negative finite value per basis point and have positive total mass.", call. = FALSE)
+    }
+
+    spatial_prior = evaluate_spatial_prior_on_points(
+        segmentation_fit = segmentation_fit,
+        coords = coords,
+        outside = prior_outside,
+        n_threads = n_threads
+    )
+    fine_cell_types = colnames(spatial_prior)
+    if (is.null(fine_cell_types)) {
+        fine_cell_types = paste0("type", seq_len(ncol(spatial_prior)))
+        colnames(spatial_prior) = fine_cell_types
+    }
+    group_list = normalize_cell_type_groups(cell_type_groups, fine_cell_types)
+    if (!is.null(cell_type_groups)) {
+        spatial_prior = aggregate_matrix_by_cell_type_groups(spatial_prior, group_list)
+    }
+
+    available_cell_types = colnames(spatial_prior)
+    if (is.null(cell_types)) {
+        cell_types = available_cell_types
+    } else {
+        cell_types = as.character(cell_types)
+        missing = setdiff(cell_types, available_cell_types)
+        if (length(missing) > 0L) {
+            stop("cell_types contains unknown cell type(s): ", paste(missing, collapse = ", "), call. = FALSE)
+        }
+    }
+    if (length(cell_types) < 2L) {
+        stop("At least two cell types are required to compute pairwise overlap.", call. = FALSE)
+    }
+    spatial_prior = spatial_prior[, cell_types, drop = FALSE]
+
+    weighted_prior = spatial_prior * weights
+    mass = colSums(weighted_prior)
+    norm2 = colSums(spatial_prior * weighted_prior)
+    pairs = utils::combn(cell_types, 2L, simplify = FALSE)
+    out = lapply(pairs, function(pair) {
+        a = pair[[1L]]
+        b = pair[[2L]]
+        shared_mass = sum(weights * pmin(spatial_prior[, a], spatial_prior[, b]))
+        union_mass = mass[[a]] + mass[[b]] - shared_mass
+        cross = sum(weights * spatial_prior[, a] * spatial_prior[, b])
+        cosine_denom = sqrt(norm2[[a]] * norm2[[b]])
+        data.frame(
+            cell_type_a = a,
+            cell_type_b = b,
+            mass_a = unname(mass[[a]]),
+            mass_b = unname(mass[[b]]),
+            shared_mass = shared_mass,
+            overlap_coef = shared_mass / min(mass[[a]], mass[[b]]),
+            frac_a_shared = shared_mass / mass[[a]],
+            frac_b_shared = shared_mass / mass[[b]],
+            jaccard = shared_mass / union_mass,
+            cosine = if (cosine_denom > 0) cross / cosine_denom else NA_real_,
+            stringsAsFactors = FALSE
+        )
+    })
+    out = do.call(rbind, out)
+    out = out[order(out$overlap_coef, out$shared_mass, decreasing = TRUE), , drop = FALSE]
+    rownames(out) = NULL
+    attr(out, "basis_source") = basis_source
+    attr(out, "n_basis_points") = nrow(coords)
+    attr(out, "total_weight") = sum(weights)
+    attr(out, "cell_type_groups") = if (is.null(cell_type_groups)) NULL else group_list
+    out
+}
+
 summarize_basis_basins <- function(basin, parent, type_density, cell_types) {
     out = vector("list", length(cell_types))
     for (k in seq_along(cell_types)) {
