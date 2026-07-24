@@ -755,3 +755,128 @@ NumericMatrix spatial_basis_density_support_cpp(
 
     return support;
 }
+
+// Pairwise overlap summaries for spatial prior fields.
+// [[Rcpp::export]]
+List spatial_basis_signature_overlap_cpp(
+    const NumericMatrix& spatial_prior,
+    const NumericVector& weights,
+    const int n_threads
+) {
+    const int n = spatial_prior.nrow();
+    const int K = spatial_prior.ncol();
+    if (weights.size() != n) {
+        stop("weights must have one entry per row of spatial_prior.");
+    }
+    if (K < 2) {
+        stop("spatial_prior must contain at least two columns.");
+    }
+    if (n_threads < 0) {
+        stop("n_threads must be NULL or a positive integer.");
+    }
+
+    double total_weight = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double wi = weights[i];
+        if (!R_finite(wi) || wi < 0.0) {
+            stop("weights must contain only non-negative finite values.");
+        }
+        total_weight += wi;
+        for (int k = 0; k < K; ++k) {
+            if (!R_finite(spatial_prior(i, k))) {
+                stop("spatial_prior must contain only finite values.");
+            }
+        }
+    }
+    if (total_weight <= 0.0) {
+        stop("weights must have positive total mass.");
+    }
+
+    const int P = K * (K - 1) / 2;
+    IntegerVector pair_a(P);
+    IntegerVector pair_b(P);
+    int p = 0;
+    for (int a = 0; a < K - 1; ++a) {
+        for (int b = a + 1; b < K; ++b) {
+            pair_a[p] = a + 1;
+            pair_b[p] = b + 1;
+            ++p;
+        }
+    }
+
+    NumericVector mass(K);
+    NumericVector norm2(K);
+    NumericVector shared(P);
+    NumericVector cross(P);
+    const int actual_threads = resolve_threads(n_threads);
+
+#ifdef _OPENMP
+#pragma omp parallel num_threads(actual_threads)
+    {
+        std::vector<double> local_mass(K, 0.0);
+        std::vector<double> local_norm2(K, 0.0);
+        std::vector<double> local_shared(P, 0.0);
+        std::vector<double> local_cross(P, 0.0);
+
+#pragma omp for schedule(static)
+        for (int i = 0; i < n; ++i) {
+            const double wi = weights[i];
+            for (int k = 0; k < K; ++k) {
+                const double pk = spatial_prior(i, k);
+                local_mass[k] += wi * pk;
+                local_norm2[k] += wi * pk * pk;
+            }
+            int q = 0;
+            for (int a = 0; a < K - 1; ++a) {
+                const double pa = spatial_prior(i, a);
+                for (int b = a + 1; b < K; ++b) {
+                    const double pb = spatial_prior(i, b);
+                    local_shared[q] += wi * std::min(pa, pb);
+                    local_cross[q] += wi * pa * pb;
+                    ++q;
+                }
+            }
+        }
+
+#pragma omp critical
+        {
+            for (int k = 0; k < K; ++k) {
+                mass[k] += local_mass[k];
+                norm2[k] += local_norm2[k];
+            }
+            for (int q = 0; q < P; ++q) {
+                shared[q] += local_shared[q];
+                cross[q] += local_cross[q];
+            }
+        }
+    }
+#else
+    for (int i = 0; i < n; ++i) {
+        const double wi = weights[i];
+        for (int k = 0; k < K; ++k) {
+            const double pk = spatial_prior(i, k);
+            mass[k] += wi * pk;
+            norm2[k] += wi * pk * pk;
+        }
+        int q = 0;
+        for (int a = 0; a < K - 1; ++a) {
+            const double pa = spatial_prior(i, a);
+            for (int b = a + 1; b < K; ++b) {
+                const double pb = spatial_prior(i, b);
+                shared[q] += wi * std::min(pa, pb);
+                cross[q] += wi * pa * pb;
+                ++q;
+            }
+        }
+    }
+#endif
+
+    return List::create(
+        _["pair_a"] = pair_a,
+        _["pair_b"] = pair_b,
+        _["mass"] = mass,
+        _["norm2"] = norm2,
+        _["shared"] = shared,
+        _["cross"] = cross
+    );
+}

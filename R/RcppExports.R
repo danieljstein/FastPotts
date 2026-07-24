@@ -323,6 +323,10 @@ spatial_basis_density_support_cpp <- function(par, segmentation_basis_id, segmen
     .Call(`_FastPotts_spatial_basis_density_support_cpp`, par, segmentation_basis_id, segmentation_basis_weight, gene_index, log_signature, density_basis_id, density_basis_weight, n_segmentation_basis, n_density_basis, n_threads, n_cell_types, hard_max)
 }
 
+spatial_basis_signature_overlap_cpp <- function(spatial_prior, weights, n_threads) {
+    .Call(`_FastPotts_spatial_basis_signature_overlap_cpp`, spatial_prior, weights, n_threads)
+}
+
 #' @noRd
 spatial_density_objective_cpp <- function(par, obs_basis_id, obs_basis_weight, obs_edge_id, obs_weight, quad_basis_id, quad_basis_weight, quad_edge_id, quad_weight, pair_from, pair_to, smooth_edge_from, smooth_edge_to, smooth_edge_distance, density_floor, lambda_eta, lambda_s_smooth, lambda_s_prior, s_prior_mean, lambda_edge, n_basis, n_edge_coef, n_cell_types, n_threads) {
     .Call(`_FastPotts_spatial_density_objective_cpp`, par, obs_basis_id, obs_basis_weight, obs_edge_id, obs_weight, quad_basis_id, quad_basis_weight, quad_edge_id, quad_weight, pair_from, pair_to, smooth_edge_from, smooth_edge_to, smooth_edge_distance, density_floor, lambda_eta, lambda_s_smooth, lambda_s_prior, s_prior_mean, lambda_edge, n_basis, n_edge_coef, n_cell_types, n_threads)

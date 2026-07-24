@@ -289,12 +289,16 @@ spatial_basis_signature_overlap <- function(
         stop("basis weights must contain one non-negative finite value per basis point and have positive total mass.", call. = FALSE)
     }
 
-    spatial_prior = evaluate_spatial_prior_on_points(
-        segmentation_fit = segmentation_fit,
-        coords = coords,
-        outside = prior_outside,
-        n_threads = n_threads
-    )
+    spatial_prior = if (is.null(density_fit)) {
+        softmax_rows(segmentation_fit$basis_weights)
+    } else {
+        evaluate_spatial_prior_on_points(
+            segmentation_fit = segmentation_fit,
+            coords = coords,
+            outside = prior_outside,
+            n_threads = n_threads
+        )
+    }
     fine_cell_types = colnames(spatial_prior)
     if (is.null(fine_cell_types)) {
         fine_cell_types = paste0("type", seq_len(ncol(spatial_prior)))
@@ -320,32 +324,29 @@ spatial_basis_signature_overlap <- function(
     }
     spatial_prior = spatial_prior[, cell_types, drop = FALSE]
 
-    weighted_prior = spatial_prior * weights
-    mass = colSums(weighted_prior)
-    norm2 = colSums(spatial_prior * weighted_prior)
-    pairs = utils::combn(cell_types, 2L, simplify = FALSE)
-    out = lapply(pairs, function(pair) {
-        a = pair[[1L]]
-        b = pair[[2L]]
-        shared_mass = sum(weights * pmin(spatial_prior[, a], spatial_prior[, b]))
-        union_mass = mass[[a]] + mass[[b]] - shared_mass
-        cross = sum(weights * spatial_prior[, a] * spatial_prior[, b])
-        cosine_denom = sqrt(norm2[[a]] * norm2[[b]])
-        data.frame(
-            cell_type_a = a,
-            cell_type_b = b,
-            mass_a = unname(mass[[a]]),
-            mass_b = unname(mass[[b]]),
-            shared_mass = shared_mass,
-            overlap_coef = shared_mass / min(mass[[a]], mass[[b]]),
-            frac_a_shared = shared_mass / mass[[a]],
-            frac_b_shared = shared_mass / mass[[b]],
-            jaccard = shared_mass / union_mass,
-            cosine = if (cosine_denom > 0) cross / cosine_denom else NA_real_,
-            stringsAsFactors = FALSE
-        )
-    })
-    out = do.call(rbind, out)
+    overlap = spatial_basis_signature_overlap_cpp(
+        spatial_prior = spatial_prior,
+        weights = weights,
+        n_threads = if (is.null(n_threads)) 0L else as.integer(n_threads)
+    )
+    mass_a = overlap$mass[overlap$pair_a]
+    mass_b = overlap$mass[overlap$pair_b]
+    shared_mass = overlap$shared
+    union_mass = mass_a + mass_b - shared_mass
+    cosine_denom = sqrt(overlap$norm2[overlap$pair_a] * overlap$norm2[overlap$pair_b])
+    out = data.frame(
+        cell_type_a = cell_types[overlap$pair_a],
+        cell_type_b = cell_types[overlap$pair_b],
+        mass_a = mass_a,
+        mass_b = mass_b,
+        shared_mass = shared_mass,
+        overlap_coef = shared_mass / pmin(mass_a, mass_b),
+        frac_a_shared = shared_mass / mass_a,
+        frac_b_shared = shared_mass / mass_b,
+        jaccard = shared_mass / union_mass,
+        cosine = ifelse(cosine_denom > 0, overlap$cross / cosine_denom, NA_real_),
+        stringsAsFactors = FALSE
+    )
     out = out[order(out$overlap_coef, out$shared_mass, decreasing = TRUE), , drop = FALSE]
     rownames(out) = NULL
     attr(out, "basis_source") = basis_source

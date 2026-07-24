@@ -230,6 +230,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// spatial_basis_signature_overlap_cpp
+List spatial_basis_signature_overlap_cpp(const NumericMatrix& spatial_prior, const NumericVector& weights, const int n_threads);
+RcppExport SEXP _FastPotts_spatial_basis_signature_overlap_cpp(SEXP spatial_priorSEXP, SEXP weightsSEXP, SEXP n_threadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type spatial_prior(spatial_priorSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_threads(n_threadsSEXP);
+    rcpp_result_gen = Rcpp::wrap(spatial_basis_signature_overlap_cpp(spatial_prior, weights, n_threads));
+    return rcpp_result_gen;
+END_RCPP
+}
 // spatial_density_objective_cpp
 List spatial_density_objective_cpp(const NumericVector& par, const IntegerMatrix& obs_basis_id, const NumericMatrix& obs_basis_weight, const IntegerMatrix& obs_edge_id, const NumericMatrix& obs_weight, const IntegerMatrix& quad_basis_id, const NumericMatrix& quad_basis_weight, const IntegerMatrix& quad_edge_id, const NumericVector& quad_weight, const IntegerVector& pair_from, const IntegerVector& pair_to, const IntegerVector& smooth_edge_from, const IntegerVector& smooth_edge_to, const NumericVector& smooth_edge_distance, const NumericVector& density_floor, const double lambda_eta, const double lambda_s_smooth, const double lambda_s_prior, const double s_prior_mean, const double lambda_edge, const int n_basis, const int n_edge_coef, const int n_cell_types, const int n_threads);
 RcppExport SEXP _FastPotts_spatial_density_objective_cpp(SEXP parSEXP, SEXP obs_basis_idSEXP, SEXP obs_basis_weightSEXP, SEXP obs_edge_idSEXP, SEXP obs_weightSEXP, SEXP quad_basis_idSEXP, SEXP quad_basis_weightSEXP, SEXP quad_edge_idSEXP, SEXP quad_weightSEXP, SEXP pair_fromSEXP, SEXP pair_toSEXP, SEXP smooth_edge_fromSEXP, SEXP smooth_edge_toSEXP, SEXP smooth_edge_distanceSEXP, SEXP density_floorSEXP, SEXP lambda_etaSEXP, SEXP lambda_s_smoothSEXP, SEXP lambda_s_priorSEXP, SEXP s_prior_meanSEXP, SEXP lambda_edgeSEXP, SEXP n_basisSEXP, SEXP n_edge_coefSEXP, SEXP n_cell_typesSEXP, SEXP n_threadsSEXP) {
@@ -595,6 +608,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_FastPotts_spatial_basis_predict_cpp", (DL_FUNC) &_FastPotts_spatial_basis_predict_cpp, 13},
     {"_FastPotts_spatial_basis_posterior_counts_cpp", (DL_FUNC) &_FastPotts_spatial_basis_posterior_counts_cpp, 9},
     {"_FastPotts_spatial_basis_density_support_cpp", (DL_FUNC) &_FastPotts_spatial_basis_density_support_cpp, 12},
+    {"_FastPotts_spatial_basis_signature_overlap_cpp", (DL_FUNC) &_FastPotts_spatial_basis_signature_overlap_cpp, 3},
     {"_FastPotts_spatial_density_objective_cpp", (DL_FUNC) &_FastPotts_spatial_density_objective_cpp, 24},
     {"_FastPotts_spatial_density_predict_cpp", (DL_FUNC) &_FastPotts_spatial_density_predict_cpp, 11},
     {"_FastPotts_make_log_density_domain_simplex_cpp", (DL_FUNC) &_FastPotts_make_log_density_domain_simplex_cpp, 2},
