@@ -517,6 +517,8 @@ warn_spatial_basis_optim_status <- function(opt, maxit) {
 #'     requested with `return_logits = TRUE`.}
 #'   \item{max_posterior}{Maximum posterior probability per transcript, if
 #'     requested with `return_max_posterior = TRUE`.}
+#'   \item{posterior_gene_counts}{Matrix of final unthresholded soft posterior
+#'     transcript counts, with one row per gene and one column per cell type.}
 #'   \item{basis_weights}{Matrix of fitted centered basis coefficients, one row
 #'     per lattice basis point and one column per cell type. Rows sum to zero.}
 #'   \item{basis_points}{Matrix of lattice basis point coordinates.}
@@ -877,9 +879,11 @@ spatial_basis_segmentation <- function(
         return_posterior = return_marginals,
         return_logits = return_logits,
         return_labels = TRUE,
-        return_max_posterior = return_max_posterior
+        return_max_posterior = return_max_posterior,
+        return_posterior_gene_counts = TRUE
     )
 
+    dimnames(pred$posterior_gene_counts) = dimnames(current_signatures)
     if (!is.null(pred$posterior)) {
         colnames(pred$posterior) = colnames(current_signatures)
     }
@@ -908,6 +912,7 @@ spatial_basis_segmentation <- function(
         cell_signatures = current_signatures,
         signature_history = signature_history,
         signature_update_history = signature_update_history,
+        posterior_gene_counts = pred$posterior_gene_counts,
         diagnostics = diagnostics,
         parameters = list(
             basis = basis,
@@ -1052,7 +1057,8 @@ predict_spatial_basis_segmentation <- function(
         return_posterior = "marginals" %in% what,
         return_logits = "logits" %in% what,
         return_labels = "labels" %in% what,
-        return_max_posterior = "max_posterior" %in% what
+        return_max_posterior = "max_posterior" %in% what,
+        return_posterior_gene_counts = FALSE
     )
 
     if (!is.null(pred$posterior)) {

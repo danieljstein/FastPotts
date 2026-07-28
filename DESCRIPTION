@@ -1,6 +1,6 @@
 Package: FastPotts
 Title: Spatial Transcriptomics Segmentation with Potts and Basis Models
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: 
     person("Daniel", "Stein", , "djs31415@gmail.com", role = c("aut", "cre"))
 Description: Implements spatial transcriptomics segmentation methods, including

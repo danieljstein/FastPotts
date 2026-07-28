@@ -311,7 +311,10 @@ The first spatial fit uses `maxit`; warm-started refits after signature updates
 use `refinement_maxit` when supplied, otherwise they also use `maxit`.
 The returned object includes `cell_signatures_initial`, final
 `cell_signatures`, `signature_history`, `signature_update_history`, and
-`optim_history`.
+`optim_history`. It also includes `posterior_gene_counts`, the final
+unthresholded soft transcript counts by gene and cell type. These counts are
+computed from the final signatures and final refitted spatial field, rather
+than from the pre-update posterior used in the last signature refinement step.
 
 ## MAP Objective
 
@@ -662,6 +665,8 @@ This is a good default for the current model because:
   `return_logits = TRUE`
 - `max_posterior`: the maximum posterior probability per transcript, if
   requested with `return_max_posterior = TRUE`
+- `posterior_gene_counts`: final unthresholded soft posterior transcript counts,
+  with genes in rows and cell types in columns
 - `basis_weights`: fitted centered basis coefficients `w[k, m]`
 - `basis_points`: spatial coordinates of lattice basis points
 - `basis_lattice`: integer lattice coordinates

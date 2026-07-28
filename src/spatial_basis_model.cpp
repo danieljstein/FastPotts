@@ -356,10 +356,12 @@ List spatial_basis_predict_cpp(
     const bool return_posterior,
     const bool return_logits,
     const bool return_labels,
-    const bool return_max_posterior
+    const bool return_max_posterior,
+    const bool return_posterior_gene_counts
 ) {
     const int n = basis_id.nrow();
     const int n_active = basis_id.ncol();
+    const int n_genes = log_signature.nrow();
 
     if (par.size() != n_basis * n_cell_types) {
         stop("par has incompatible length.");
@@ -387,6 +389,7 @@ List spatial_basis_predict_cpp(
     NumericMatrix logits;
     IntegerVector labels;
     NumericVector max_posterior;
+    NumericMatrix posterior_gene_counts;
 
     if (return_prior) {
         prior = NumericMatrix(n, n_cell_types);
@@ -410,11 +413,23 @@ List spatial_basis_predict_cpp(
         n_basis,
         n_cell_types
     );
+    std::vector< std::vector<double> > counts_by_thread;
+    if (return_posterior_gene_counts) {
+        counts_by_thread.assign(
+            actual_threads,
+            std::vector<double>(n_genes * n_cell_types, 0.0)
+        );
+    }
 
 #ifdef _OPENMP
 #pragma omp parallel num_threads(actual_threads)
 #endif
     {
+#ifdef _OPENMP
+        const int tid = omp_get_thread_num();
+#else
+        const int tid = 0;
+#endif
         std::vector<double> f(n_cell_types);
         std::vector<double> log_post(n_cell_types);
 
@@ -455,6 +470,9 @@ List spatial_basis_predict_cpp(
             if (return_posterior) {
                 posterior(i, k) = q;
             }
+            if (return_posterior_gene_counts) {
+                counts_by_thread[tid][g + n_genes * k] += q;
+            }
             if (q > best_q) {
                 best_q = q;
                 best_k = k;
@@ -468,6 +486,18 @@ List spatial_basis_predict_cpp(
             max_posterior[i] = best_q;
         }
     }
+    }
+
+    if (return_posterior_gene_counts) {
+        posterior_gene_counts = NumericMatrix(n_genes, n_cell_types);
+        for (int tid = 0; tid < actual_threads; ++tid) {
+            const std::vector<double>& local_counts = counts_by_thread[tid];
+            for (int k = 0; k < n_cell_types; ++k) {
+                for (int g = 0; g < n_genes; ++g) {
+                    posterior_gene_counts(g, k) += local_counts[g + n_genes * k];
+                }
+            }
+        }
     }
 
     List out;
@@ -485,6 +515,9 @@ List spatial_basis_predict_cpp(
     }
     if (return_max_posterior) {
         out["max_posterior"] = max_posterior;
+    }
+    if (return_posterior_gene_counts) {
+        out["posterior_gene_counts"] = posterior_gene_counts;
     }
 
     return out;

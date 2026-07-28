@@ -174,6 +174,8 @@ requested with \code{return_spatial_prior = TRUE}.}
 requested with \code{return_logits = TRUE}.}
 \item{max_posterior}{Maximum posterior probability per transcript, if
 requested with \code{return_max_posterior = TRUE}.}
+\item{posterior_gene_counts}{Matrix of final unthresholded soft posterior
+transcript counts, with one row per gene and one column per cell type.}
 \item{basis_weights}{Matrix of fitted centered basis coefficients, one row
 per lattice basis point and one column per cell type. Rows sum to zero.}
 \item{basis_points}{Matrix of lattice basis point coordinates.}
